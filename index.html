@@ -1,0 +1,339 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8"> 
+<title>Simple SFU</title>
+<style>
+    video {
+      width: 300px;
+      border: 1px solid black;
+      margin: 5px;
+    }
+</style>
+</head>
+<body>
+<button id="joinBtn" onclick="join()">Join</button>
+<button id="toggleVideo" onclick="toggleVideo()" disabled>Video Off</button>
+<button id="toggleAudio" onclick="toggleAudio()" disabled>Audio Off</button>
+<button id="quitBtn" onclick="quit()" disabled>Quit</button>
+<br><br>
+<video id="local" autoplay playsinline muted></video>
+<div id="remotes" style="border: 5px red double"></div>
+
+<script>
+let pc, ws, pendingIce = []
+let localStream
+let videoTrack, audioTrack
+const remoteStreams = new Map() // streamId -> {video: element, audio: element, audioLevel: number, analyzer: AudioContext}
+const audioContext = new (window.AudioContext || window.webkitAudioContext)()
+
+async function join() {
+  // Prevent multiple joins
+  if (pc && pc.connectionState !== 'closed') {
+    console.log('Already connected, ignoring join')
+    return
+  }
+  
+  localStream = await navigator.mediaDevices.getUserMedia({
+    video:true,
+    audio:true
+  });
+  console.log('Local stream tracks:', localStream.getTracks())
+  console.log('Local stream ID:', localStream.id)
+  local.srcObject = localStream
+  
+  videoTrack = localStream.getVideoTracks()[0]
+  audioTrack = localStream.getAudioTracks()[0]
+  
+  document.getElementById('joinBtn').disabled = true
+  document.getElementById('toggleVideo').disabled = false
+  document.getElementById('toggleAudio').disabled = false
+  document.getElementById('quitBtn').disabled = false
+
+  pc = new RTCPeerConnection({
+    iceServers: [
+      { urls: ["stun:stun.l.google.com:19302"] },
+      {
+        urls: ["turn:openrelay.metered.ca:80"],
+        username: "openrelayproject",
+        credential: "openrelayproject",
+      }
+    ] 
+  })
+
+  localStream.getTracks().forEach(t => pc.addTrack(t, localStream))
+
+  pc.onicecandidate = e => {
+    if (e.candidate) {
+      console.log('Sending ICE:', e.candidate)
+      ws.send(JSON.stringify({type:"ice", candidate:e.candidate}))
+    }
+  }
+
+
+  pc.ontrack = e => {
+    const receivedStreamId = e.streams[0].id
+    const localStreamId = localStream ? localStream.id : 'undefined'
+    
+    console.log('==== TRACK RECEIVED ====')
+    console.log('Track kind:', e.track.kind)
+    console.log('Received stream ID:', receivedStreamId)
+    console.log('Local stream ID:', localStreamId)
+    console.log('Match?', receivedStreamId === localStreamId)
+    
+    // Check if this is our own track (loopback)
+    if (localStream && receivedStreamId === localStreamId) {
+      console.log('IGNORING: Loopback track detected')
+      return
+    }
+
+    const streamId = receivedStreamId
+    const stream = e.streams[0]
+    
+    // Additional check: ignore if streamId is empty or undefined
+    if (!streamId || streamId === 'undefined' || streamId === '') {
+      console.log('IGNORING: Empty or undefined stream ID')
+      return
+    }
+
+    // Get or create container for this stream
+    if (!remoteStreams.has(streamId)) {
+      console.log('Creating new container for stream:', streamId)
+      remoteStreams.set(streamId, {video: null, audio: null, audioLevel: 0, analyzer: null})
+    } else {
+      console.log('Using existing container for stream:', streamId)
+    }
+    const container = remoteStreams.get(streamId)
+
+    if (e.track.kind === "video" && !container.video) {
+      console.log('Creating video element for peer ID:', streamId)
+      const v = document.createElement("video")
+      v.autoplay = true
+      v.playsInline = true
+      v.srcObject = stream
+      v.setAttribute('data-peer-id', streamId)
+      v.id = 'video-' + streamId
+      remotes.appendChild(v)
+      container.video = v
+      console.log('Video element created with peer ID:', streamId, 'Total elements:', remotes.children.length)
+    } else if (e.track.kind === "video") {
+      console.log('Video element already exists for peer ID:', streamId, '- skipping')
+    }
+
+    if (e.track.kind === "audio" && !container.audio) {
+      console.log('Creating audio element for peer ID:', streamId)
+      const a = document.createElement("audio")
+      a.autoplay = true
+      a.controls = true
+      a.srcObject = stream
+      a.setAttribute('data-peer-id', streamId)
+      a.id = 'audio-' + streamId
+      remotes.appendChild(a)
+      container.audio = a
+      console.log('Audio element created with peer ID:', streamId, 'Total elements:', remotes.children.length)
+
+      // Setup audio level analyzer
+      // setupAudioAnalyzer(stream, container)
+
+      a.play()
+        .then(() => console.log('Audio playing for stream:', streamId))
+        .catch(err => {
+          console.error('Audio autoplay blocked:', err)
+          setTimeout(() => a.play().catch(()=>{}), 500)
+        })
+    }
+  }
+
+  pc.oniceconnectionstatechange = () => console.log('ICE state:', pc.iceConnectionState)
+  pc.onconnectionstatechange = () => console.log('Connection state:', pc.connectionState)
+  pc.onsignalingstatechange = () => console.log('Signaling state:', pc.signalingState)
+
+  ws = new WebSocket("ws://localhost:8080/ws")
+
+  ws.onmessage = async e => {
+    let msg;
+    try {
+      msg = JSON.parse(e.data);
+    } catch (err) {
+      console.log('Invalid JSON received:', e.data, err);
+      return;
+    }
+    console.log('Received:', msg)
+
+    if (msg.type === "offer") {
+      console.log('Setting remote desc with offer')
+      await pc.setRemoteDescription(msg.sdp)
+      console.log('Remote desc set, creating answer')
+      const ans = await pc.createAnswer()
+      await pc.setLocalDescription(ans)
+      console.log('Local desc set, sending answer:', pc.localDescription)
+      ws.send(JSON.stringify({type:"answer", sdp:pc.localDescription}))
+
+      pendingIce.forEach(c => pc.addIceCandidate(c))
+      pendingIce = []
+    }
+
+    if (msg.type === "ice") {
+      if (pc.remoteDescription)
+        pc.addIceCandidate(msg.candidate)
+      else
+        pendingIce.push(msg.candidate)
+    }
+
+    if (msg.type === "peer-left") {
+      console.log('Peer left:', msg.peerId)
+      document.getElementById(`video-${msg.peerId}`)?.remove()
+      document.getElementById(`audio-${msg.peerId}`)?.remove()
+      remoteStreams.delete(msg.peerId)
+      console.log('Remaining remotes after peer left:', remoteStreams.size)
+    }
+  }
+}
+
+function setupAudioAnalyzer(stream, container) {
+  try {
+    const source = audioContext.createMediaStreamSource(stream)
+    const analyzer = audioContext.createAnalyser()
+    analyzer.fftSize = 256
+    analyzer.smoothingTimeConstant = 0.8
+    source.connect(analyzer)
+    
+    const dataArray = new Uint8Array(analyzer.frequencyBinCount)
+    
+    container.analyzer = analyzer
+    
+    // Monitor audio levels
+    function checkLevel() {
+      if (!container.audio) return
+      
+      analyzer.getByteFrequencyData(dataArray)
+      const average = dataArray.reduce((a, b) => a + b, 0) / dataArray.length
+      container.audioLevel = average
+      
+      requestAnimationFrame(checkLevel)
+    }
+    checkLevel()
+  } catch (err) {
+    console.error('Audio analyzer setup failed:', err)
+  }
+}
+
+function toggleVideo() {
+  if (videoTrack) {
+    videoTrack.enabled = !videoTrack.enabled
+    document.getElementById('toggleVideo').textContent = videoTrack.enabled ? 'Video Off' : 'Video On'
+  }
+}
+
+function toggleAudio() {
+  if (audioTrack) {
+    audioTrack.enabled = !audioTrack.enabled
+    document.getElementById('toggleAudio').textContent = audioTrack.enabled ? 'Audio Off' : 'Audio On'
+  }
+}
+
+function removePeer(peerId) {
+  console.log('Removing peer with ID:', peerId)
+  
+  // Find and remove video element by peer ID
+  const videoElement = document.getElementById('video-' + peerId)
+  if (videoElement) {
+    videoElement.parentNode.removeChild(videoElement)
+    console.log('Removed video element for peer:', peerId)
+  }
+  
+  // Find and remove audio element by peer ID
+  const audioElement = document.getElementById('audio-' + peerId)
+  if (audioElement) {
+    audioElement.parentNode.removeChild(audioElement)
+    console.log('Removed audio element for peer:', peerId)
+  }
+  
+  // Remove from map
+  remoteStreams.delete(peerId)
+  console.log('Peer removed from map:', peerId, 'Remaining remotes:', remoteStreams.size)
+}
+
+function quit() {
+  console.log('Quitting...')
+  
+  // Stop all local tracks
+  if (localStream) {
+    localStream.getTracks().forEach(track => {
+      track.stop()
+      console.log('Stopped track:', track.kind)
+    })
+  }
+  
+  // Close peer connection
+  if (pc) {
+    pc.close()
+    console.log('Closed peer connection')
+  }
+  
+  // Close WebSocket
+  if (ws) {
+    ws.close()
+    console.log('Closed WebSocket')
+  }
+  
+  // Clear local video
+  if (local) {
+    local.srcObject = null
+  }
+  
+  // Clear the entire remotes div first
+  const remotesDiv = document.getElementById('remotes')
+  console.log('Elements in remotes before clear:', remotesDiv.children.length)
+  while (remotesDiv.firstChild) {
+    remotesDiv.removeChild(remotesDiv.firstChild)
+  }
+  console.log('Elements in remotes after clear:', remotesDiv.children.length)
+  
+  // Clear the map
+  remoteStreams.clear()
+  
+  // Reset variables
+  pc = null
+  ws = null
+  localStream = null
+  videoTrack = null
+  audioTrack = null
+  pendingIce = []
+  
+  // Reset UI
+  document.getElementById('joinBtn').disabled = false
+  document.getElementById('toggleVideo').disabled = true
+  document.getElementById('toggleAudio').disabled = true
+  document.getElementById('quitBtn').disabled = true
+  document.getElementById('toggleVideo').textContent = 'Video Off'
+  document.getElementById('toggleAudio').textContent = 'Audio Off'
+  
+  console.log('Quit complete')
+}
+
+
+// Sort remotes by audio level every 500ms
+/*
+setInterval(() => {
+  if (remoteStreams.size === 0) return
+  
+  // Create array of streams with their audio levels
+  const streams = Array.from(remoteStreams.entries())
+    .filter(([_, data]) => data.video)
+    .sort((a, b) => b[1].audioLevel - a[1].audioLevel)
+  
+  // Reorder DOM elements
+  streams.forEach(([streamId, data]) => {
+    if (data.video && data.video.parentNode) {
+      remotes.appendChild(data.video)
+    }
+    if (data.audio && data.audio.parentNode) {
+      remotes.appendChild(data.audio)
+    }
+  })
+}, 500)
+*/
+</script>
+</body>
+</html>
