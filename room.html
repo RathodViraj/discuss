@@ -1,0 +1,198 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8"> 
+<title>Meeting Room - SFU</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="container">
+  <h2 id="roomTitle">Meeting Room</h2>
+  <div id="roomInfo" style="margin-bottom: 15px; color: #666;"></div>
+  
+  <div>
+    <button id="toggleVideo" onclick="toggleVideo()">Video Off</button>
+    <button id="toggleAudio" onclick="toggleAudio()">Audio Off</button>
+    <button id="quitBtn" onclick="quit()">Leave Meeting</button>
+  </div>
+</div>
+
+<div class="container">
+  <h3>Your Video</h3>
+  <video id="local" autoplay playsinline muted></video>
+</div>
+
+<div class="container">
+  <h3>Participants</h3>
+  <div id="remotes"></div>
+</div>
+
+<script>
+let pc, ws, pendingIce = []
+let localStream
+let videoTrack, audioTrack
+let currentRoom = null
+const remoteStreams = new Map()
+
+// Helper to get room details from URL
+const urlParams = new URLSearchParams(window.location.search)
+const roomId = urlParams.get('room')
+const title = urlParams.get('title') || ''
+const meetingType = urlParams.get('type') || ''
+
+if (!roomId) {
+  alert('No room specified')
+  window.location.href = '/index.html'
+}
+
+document.getElementById('roomTitle').textContent = title || `Room: ${roomId}`
+if (meetingType) {
+  document.getElementById('roomInfo').innerHTML = `<span class="room-badge badge-${meetingType}">${meetingType}</span> <span>ID: ${roomId}</span>`
+} else {
+  document.getElementById('roomInfo').textContent = `Room ID: ${roomId}`
+}
+
+window.addEventListener('DOMContentLoaded', () => join(roomId, title, meetingType))
+
+async function join(roomName, title = '', meetingType = '') {
+  if (pc && pc.connectionState !== 'closed') return;
+  
+  // 1. Get User Media
+  try {
+    localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+    document.getElementById('local').srcObject = localStream
+    videoTrack = localStream.getVideoTracks()[0]
+    audioTrack = localStream.getAudioTracks()[0]
+  } catch (e) {
+    console.error("Could not get user media", e)
+    return
+  }
+
+  // 2. Create PC
+  pc = new RTCPeerConnection({
+    iceServers: [
+      { urls: "stun:stun.l.google.com:19302" },
+      { urls: "turn:openrelay.metered.ca:80", username: "openrelayproject", credential: "openrelayproject" }
+    ]
+  })
+
+  // 3. Add Local Tracks
+  localStream.getTracks().forEach(t => pc.addTrack(t, localStream))
+
+  // 4. Handle ICE
+  pc.onicecandidate = e => {
+    if (e.candidate && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({type:"ice", candidate:e.candidate}))
+    }
+  }
+
+  // 5. Handle Incoming Tracks
+  pc.ontrack = e => {
+    // The server sets the Stream ID to the Peer ID.
+    // If the server hasn't attached a track properly, e.streams might be empty.
+    if (!e.streams || e.streams.length === 0) {
+      console.log("Received track without stream, ignoring/waiting...")
+      return
+    }
+
+    const stream = e.streams[0]
+    const peerId = stream.id // Server sets this to peerID
+    const kind = e.track.kind
+    
+    console.log(`Received ${kind} track for peer ${peerId}`)
+
+    let container = remoteStreams.get(peerId)
+    
+    // Create new container if this peer is new
+    if (!container) {
+      console.log(`Creating new container for peer ${peerId}`)
+      
+      const wrapper = document.createElement('div')
+      wrapper.id = 'peer-' + peerId
+      wrapper.className = 'peer-wrapper'
+      wrapper.style.cssText = 'display:inline-block; margin:10px; position:relative;'
+      
+      const video = document.createElement('video')
+      video.autoplay = true
+      video.playsInline = true
+      // Don't mute remote videos!
+      video.style.cssText = 'width:300px; border:1px solid #ccc; background:#000;'
+      video.srcObject = stream
+      
+      wrapper.appendChild(video)
+      document.getElementById('remotes').appendChild(wrapper)
+      
+      container = { wrapper, video, stream }
+      remoteStreams.set(peerId, container)
+    }
+
+    // Since we assigned `video.srcObject = stream` above, 
+    // and the browser automatically updates the MediaStream when tracks are added,
+    // we don't need to manually attach tracks to the video element again 
+    // IF the stream reference is the same (which it usually is).
+    // Just ensure the track is enabled.
+    e.track.enabled = true
+  }
+
+  // 6. Connect WebSocket
+  let wsUrl = `ws://${window.location.host}/ws?room=${encodeURIComponent(roomName)}`
+  ws = new WebSocket(wsUrl)
+
+  ws.onopen = () => console.log("WebSocket connected")
+  
+  ws.onmessage = async e => {
+    const msg = JSON.parse(e.data)
+
+    if (msg.type === "offer") {
+      await pc.setRemoteDescription(msg.sdp)
+      const ans = await pc.createAnswer()
+      await pc.setLocalDescription(ans)
+      ws.send(JSON.stringify({type:"answer", sdp:pc.localDescription}))
+      
+      // Flush pending ICE
+      pendingIce.forEach(c => pc.addIceCandidate(c))
+      pendingIce = []
+    }
+    else if (msg.type === "ice") {
+      if (pc.remoteDescription) pc.addIceCandidate(msg.candidate)
+      else pendingIce.push(msg.candidate)
+    }
+    else if (msg.type === "peer-left") {
+      const id = msg.peerId
+      console.log("Peer left:", id)
+      const container = remoteStreams.get(id)
+      if (container) {
+        container.wrapper.remove()
+        remoteStreams.delete(id)
+      }
+    }
+    else if (msg.type === "room-ended") {
+      alert(msg.message)
+      quit()
+    }
+  }
+}
+
+function toggleVideo() {
+  if (videoTrack) {
+    videoTrack.enabled = !videoTrack.enabled
+    document.getElementById('toggleVideo').textContent = videoTrack.enabled ? 'Video Off' : 'Video On'
+  }
+}
+
+function toggleAudio() {
+  if (audioTrack) {
+    audioTrack.enabled = !audioTrack.enabled
+    document.getElementById('toggleAudio').textContent = audioTrack.enabled ? 'Audio Off' : 'Audio On'
+  }
+}
+
+function quit() {
+  if (localStream) localStream.getTracks().forEach(t => t.stop())
+  if (pc) pc.close()
+  if (ws) ws.close()
+  window.location.href = '/index.html'
+}
+</script>
+</body>
+</html>

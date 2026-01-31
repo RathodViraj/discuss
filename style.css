@@ -1,0 +1,189 @@
+/* General Styles */
+body {
+  font-family: Arial, sans-serif;
+  margin: 0;
+  padding: 0;
+}
+
+video {
+  width: 300px;
+  border: 1px solid black;
+  margin: 5px;
+}
+
+/* Modal Styles */
+.modal {
+  display: none;
+  position: fixed;
+  z-index: 1000;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0,0,0,0.5);
+}
+
+.modal-content {
+  background-color: white;
+  margin: 10% auto;
+  padding: 30px;
+  border: 1px solid #888;
+  width: 400px;
+  border-radius: 8px;
+}
+
+/* Form Styles */
+.form-group {
+  margin-bottom: 15px;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 5px;
+  font-weight: bold;
+}
+
+.form-group input, .form-group select {
+  width: 100%;
+  padding: 8px;
+  box-sizing: border-box;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+}
+
+.form-group small {
+  color: #666;
+  font-size: 12px;
+}
+
+/* Button Styles */
+.btn-primary {
+  background-color: #4CAF50;
+  color: white;
+  padding: 10px 20px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.btn-primary:hover {
+  background-color: #45a049;
+}
+
+.btn-secondary {
+  background-color: #f44336;
+  color: white;
+  padding: 10px 20px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  margin-left: 10px;
+}
+
+.btn-secondary:hover {
+  background-color: #da190b;
+}
+
+button {
+  background-color: #008CBA;
+  color: white;
+  padding: 10px 20px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  margin: 5px;
+}
+
+button:hover {
+  background-color: #007399;
+}
+
+button:disabled {
+  background-color: #ccc;
+  cursor: not-allowed;
+}
+
+/* Room Card Styles */
+.room-card {
+  border: 1px solid #ddd;
+  padding: 15px;
+  margin: 10px 0;
+  border-radius: 5px;
+  background-color: #f9f9f9;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.room-card:hover {
+  background-color: #f0f0f0;
+  cursor: pointer;
+}
+
+.room-info h3 {
+  margin: 0 0 5px 0;
+  font-size: 16px;
+}
+
+.room-info p {
+  margin: 3px 0;
+  font-size: 13px;
+  color: #666;
+}
+
+.room-badge {
+  display: inline-block;
+  padding: 3px 8px;
+  border-radius: 3px;
+  font-size: 11px;
+  font-weight: bold;
+  margin-right: 5px;
+}
+
+.badge-debate { 
+  background-color: #ff6b6b; 
+  color: white; 
+}
+
+.badge-unpopular-opinion { 
+  background-color: #4ecdc4; 
+  color: white; 
+}
+
+.badge-ragebait { 
+  background-color: #ff9f1c; 
+  color: white; 
+}
+
+.badge-discuss { 
+  background-color: #51cf66; 
+  color: white; 
+}
+
+.badge-other { 
+  background-color: #868e96; 
+  color: white; 
+}
+
+/* Layout Styles */
+.container {
+  margin: 20px;
+}
+
+.container h2 {
+  margin-bottom: 15px;
+}
+
+#remotes {
+  border: 5px red double;
+  min-height: 100px;
+  padding: 10px;
+}
+
+#currentRoom {
+  margin-top: 10px;
+  font-weight: bold;
+}
