@@ -229,15 +229,26 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 
 	pc, err := api.NewPeerConnection(webrtc.Configuration{
 		ICEServers: []webrtc.ICEServer{
-			{URLs: []string{
-				"stun:stun.l.google.com:19302",
-				"stun:stun1.l.google.com:19302",
-				"stun:stun2.l.google.com:19302",
-			}},
+			{URLs: []string{"stun:stun.relay.metered.ca:80"}},
 			{
-				URLs:       []string{"turn:openrelay.metered.ca:80", "turn:openrelay.metered.ca:443", "turn:openrelay.metered.ca:443?transport=tcp"},
-				Username:   "openrelayproject",
-				Credential: "openrelayproject",
+				URLs:       []string{"turn:global.relay.metered.ca:80"},
+				Username:   "08c57540fdb60bd386988d52",
+				Credential: "Vn+jLmPG9MzlDKpi",
+			},
+			{
+				URLs:       []string{"turn:global.relay.metered.ca:80?transport=tcp"},
+				Username:   "08c57540fdb60bd386988d52",
+				Credential: "Vn+jLmPG9MzlDKpi",
+			},
+			{
+				URLs:       []string{"turn:global.relay.metered.ca:443"},
+				Username:   "08c57540fdb60bd386988d52",
+				Credential: "Vn+jLmPG9MzlDKpi",
+			},
+			{
+				URLs:       []string{"turns:global.relay.metered.ca:443?transport=tcp"},
+				Username:   "08c57540fdb60bd386988d52",
+				Credential: "Vn+jLmPG9MzlDKpi",
 			},
 		},
 		ICETransportPolicy: webrtc.ICETransportPolicyRelay,
