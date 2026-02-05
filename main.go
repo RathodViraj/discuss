@@ -229,13 +229,18 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 
 	pc, err := api.NewPeerConnection(webrtc.Configuration{
 		ICEServers: []webrtc.ICEServer{
-			{URLs: []string{"stun:stun.l.google.com:19302"}},
+			{URLs: []string{
+				"stun:stun.l.google.com:19302",
+				"stun:stun1.l.google.com:19302",
+				"stun:stun2.l.google.com:19302",
+			}},
 			{
-				URLs:       []string{"turn:openrelay.metered.ca:80"},
+				URLs:       []string{"turn:openrelay.metered.ca:80", "turn:openrelay.metered.ca:443", "turn:openrelay.metered.ca:443?transport=tcp"},
 				Username:   "openrelayproject",
 				Credential: "openrelayproject",
 			},
 		},
+		ICETransportPolicy: webrtc.ICETransportPolicyRelay,
 	})
 	if err != nil {
 		return
@@ -293,8 +298,18 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 	updateRoomPeerCount(roomId, len(room.peers))
 	room.mu.Unlock()
 
+	// Log ICE connection state changes for debugging
+	pc.OnICEConnectionStateChange(func(state webrtc.ICEConnectionState) {
+		log.Printf("Peer %d ICE state: %s", peer.id, state.String())
+	})
+
+	pc.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
+		log.Printf("Peer %d connection state: %s", peer.id, state.String())
+	})
+
 	pc.OnICECandidate(func(c *webrtc.ICECandidate) {
 		if c != nil {
+			log.Printf("Peer %d sending ICE candidate: %s", peer.id, c.ToJSON().Candidate)
 			peer.wsMu.Lock()
 			ws.WriteJSON(map[string]any{"type": "ice", "candidate": c.ToJSON()})
 			peer.wsMu.Unlock()

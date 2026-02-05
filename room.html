@@ -74,20 +74,42 @@ async function join(roomName, title = '', meetingType = '') {
   // 2. Create PC
   pc = new RTCPeerConnection({
     iceServers: [
-      { urls: ["stun:stun.l.google.com:19302"] },
+      { urls: [
+        "stun:stun.l.google.com:19302",
+        "stun:stun1.l.google.com:19302",
+        "stun:stun2.l.google.com:19302"
+      ]},
       {
-        urls: ["turn:openrelay.metered.ca:80"],
+        urls: [
+          "turn:openrelay.metered.ca:80",
+          "turn:openrelay.metered.ca:443",
+          "turn:openrelay.metered.ca:443?transport=tcp"
+        ],
         username: "openrelayproject",
         credential: "openrelayproject",
       }
-  ]})
+    ],
+    iceTransportPolicy: "relay"
+  })
 
   // 3. Add Local Tracks
   localStream.getTracks().forEach(t => pc.addTrack(t, localStream))
 
+  // Debug: Log ICE and connection states
+  pc.oniceconnectionstatechange = () => {
+    console.log("ICE connection state:", pc.iceConnectionState)
+  }
+  pc.onconnectionstatechange = () => {
+    console.log("Connection state:", pc.connectionState)
+  }
+  pc.onicegatheringstatechange = () => {
+    console.log("ICE gathering state:", pc.iceGatheringState)
+  }
+
   // 4. Handle ICE
   pc.onicecandidate = e => {
     if (e.candidate && ws.readyState === WebSocket.OPEN) {
+      console.log("Sending ICE candidate:", e.candidate.candidate)
       ws.send(JSON.stringify({type:"ice", candidate:e.candidate}))
     }
   }
