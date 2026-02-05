@@ -7,11 +7,16 @@ import (
 	"log"
 	"math/rand"
 	"net/http"
+	"os"
 	"sfu/db"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/joho/godotenv"
+	"github.com/pion/rtcp"
 	"github.com/pion/webrtc/v3"
 	"github.com/redis/go-redis/v9"
 )
@@ -20,23 +25,17 @@ var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool { return true },
 }
 
-// Peer represents a connected client
 type Peer struct {
-	id   int64
-	pc   *webrtc.PeerConnection
-	ws   *websocket.Conn
-	wsMu sync.Mutex
-
-	// Local tracks that this peer is SENDING to the server
-	tracks map[string]*webrtc.TrackLocalStaticRTP // map[trackID]track
-
-	// Senders on this peer's PC that are sending OTHER peers' media TO this peer
-	// Map: SourcePeerID -> Slice of Senders
-	peerSenders map[int64][]*webrtc.RTPSender
-
-	roomId             string
-	negotiating        bool
-	needsRenegotiation bool
+	id           int64
+	pc           *webrtc.PeerConnection
+	ws           *websocket.Conn
+	mu           sync.RWMutex
+	tracks       map[string]*webrtc.TrackLocalStaticRTP
+	peerSenders  map[int64][]*webrtc.RTPSender
+	remoteTracks map[string]*webrtc.TrackRemote
+	wsMu         sync.Mutex
+	roomId       string
+	negotiating  bool
 }
 
 type Room struct {
@@ -66,6 +65,10 @@ var (
 )
 
 func main() {
+	if err := godotenv.Load(); err != nil {
+		log.Println("No .env file found")
+	}
+
 	var err error
 	RedisClient, err = db.ConnectRedis()
 	if err != nil {
@@ -73,31 +76,39 @@ func main() {
 	}
 	log.Println("Connected to Redis")
 
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
+
 	http.Handle("/", http.FileServer(http.Dir(".")))
 	http.HandleFunc("/ws", wsHandler)
 	http.HandleFunc("/rooms", getRoomsHandler)
 
-	log.Println("SFU listening on :8080")
-	log.Fatal(http.ListenAndServe(":8080", nil))
+	log.Printf("SFU listening on :%s", port)
+	log.Fatal(http.ListenAndServe(":"+port, nil))
 }
 
-// --- Redis & Room Helpers (Same as before) ---
+// --- Redis Helpers ---
+func getMeetingDuration() time.Duration {
+	env := os.Getenv("MEETING_DURATION_MINUTES")
+	if env == "" {
+		return 10 * time.Minute
+	}
+	min, err := strconv.Atoi(env)
+	if err != nil {
+		return 10 * time.Minute
+	}
+	return time.Duration(min) * time.Minute
+}
 
 func saveRoomToRedis(room *Room) error {
 	roomInfo := RoomInfo{
-		ID:          room.id,
-		Title:       room.title,
-		MeetingType: room.meetingType,
-		PeerCount:   len(room.peers),
-		CreatedAt:   room.createdAt,
-		ExpiresAt:   room.createdAt.Add(10 * time.Minute),
+		ID: room.id, Title: room.title, MeetingType: room.meetingType, PeerCount: len(room.peers),
+		CreatedAt: room.createdAt, ExpiresAt: room.createdAt.Add(10 * time.Minute),
 	}
-	data, err := json.Marshal(roomInfo)
-	if err != nil {
-		return err
-	}
-	key := "room:" + room.id
-	return RedisClient.Set(ctx, key, data, 10*time.Minute).Err()
+	data, _ := json.Marshal(roomInfo)
+	return RedisClient.Set(ctx, "room:"+room.id, data, 10*time.Minute).Err()
 }
 
 func updateRoomPeerCount(roomId string, peerCount int) error {
@@ -112,13 +123,10 @@ func updateRoomPeerCount(roomId string, peerCount int) error {
 	}
 	roomInfo.PeerCount = peerCount
 	newData, _ := json.Marshal(roomInfo)
-	ttl := RedisClient.TTL(ctx, key).Val()
-	return RedisClient.Set(ctx, key, newData, ttl).Err()
+	return RedisClient.Set(ctx, key, newData, RedisClient.TTL(ctx, key).Val()).Err()
 }
 
-func deleteRoomFromRedis(roomId string) error {
-	return RedisClient.Del(ctx, "room:"+roomId).Err()
-}
+func deleteRoomFromRedis(roomId string) error { return RedisClient.Del(ctx, "room:"+roomId).Err() }
 
 func getAllRoomsFromRedis() ([]RoomInfo, error) {
 	keys, err := RedisClient.Keys(ctx, "room:*").Result()
@@ -141,39 +149,48 @@ func getAllRoomsFromRedis() ([]RoomInfo, error) {
 func getRoomsHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	rooms, err := getAllRoomsFromRedis()
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
+	rooms, _ := getAllRoomsFromRedis()
 	json.NewEncoder(w).Encode(rooms)
 }
 
-func endRoom(room *Room) {
-	log.Println("Room", room.id, "has expired")
-	room.mu.Lock()
-	// Copy peers to avoid map modification issues
-	peers := make([]*Peer, 0, len(room.peers))
-	for _, p := range room.peers {
-		peers = append(peers, p)
-	}
-	room.mu.Unlock()
+// --- Video Logic ---
 
-	for _, peer := range peers {
-		peer.wsMu.Lock()
-		peer.ws.WriteJSON(map[string]any{"type": "room-ended", "message": "Meeting time limit reached"})
-		peer.wsMu.Unlock()
-		peer.pc.Close()
-		peer.ws.Close()
+func requestKeyframe(sourcePeer *Peer, ssrc uint32) {
+	if sourcePeer.pc == nil || sourcePeer.pc.ConnectionState() != webrtc.PeerConnectionStateConnected {
+		return
 	}
-
-	roomsMu.Lock()
-	delete(rooms, room.id)
-	roomsMu.Unlock()
-	deleteRoomFromRedis(room.id)
+	sourcePeer.pc.WriteRTCP([]rtcp.Packet{
+		&rtcp.PictureLossIndication{MediaSSRC: ssrc},
+	})
 }
 
-// --- WebSocket & SFU Logic ---
+func forwardPLI(sender *webrtc.RTPSender, sourcePeer *Peer, trackID string) {
+	go func() {
+		rtcpBuf := make([]byte, 1500)
+		for {
+			n, _, err := sender.Read(rtcpBuf)
+			if err != nil {
+				return
+			}
+			packets, err := rtcp.Unmarshal(rtcpBuf[:n])
+			if err != nil {
+				continue
+			}
+			for _, p := range packets {
+				switch p.(type) {
+				case *rtcp.PictureLossIndication, *rtcp.FullIntraRequest:
+					sourcePeer.mu.RLock()
+					if remoteTrack, ok := sourcePeer.remoteTracks[trackID]; ok {
+						requestKeyframe(sourcePeer, uint32(remoteTrack.SSRC()))
+					}
+					sourcePeer.mu.RUnlock()
+				}
+			}
+		}
+	}()
+}
+
+// --- WebSocket Handler ---
 
 func wsHandler(w http.ResponseWriter, r *http.Request) {
 	roomId := r.URL.Query().Get("room")
@@ -188,7 +205,29 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	pc, err := webrtc.NewPeerConnection(webrtc.Configuration{
+	m := &webrtc.MediaEngine{}
+	if err := m.RegisterCodec(webrtc.RTPCodecParameters{
+		RTPCodecCapability: webrtc.RTPCodecCapability{
+			MimeType: webrtc.MimeTypeVP8, ClockRate: 90000, Channels: 0, SDPFmtpLine: "",
+			RTCPFeedback: []webrtc.RTCPFeedback{
+				{Type: "goog-remb"}, {Type: "ccm", Parameter: "fir"}, {Type: "nack"}, {Type: "nack", Parameter: "pli"},
+			},
+		},
+		PayloadType: 96,
+	}, webrtc.RTPCodecTypeVideo); err != nil {
+		return
+	}
+
+	if err := m.RegisterCodec(webrtc.RTPCodecParameters{
+		RTPCodecCapability: webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeOpus, ClockRate: 48000, Channels: 2, SDPFmtpLine: "", RTCPFeedback: nil},
+		PayloadType:        111,
+	}, webrtc.RTPCodecTypeAudio); err != nil {
+		return
+	}
+
+	api := webrtc.NewAPI(webrtc.WithMediaEngine(m))
+
+	pc, err := api.NewPeerConnection(webrtc.Configuration{
 		ICEServers: []webrtc.ICEServer{
 			{URLs: []string{"stun:stun.l.google.com:19302"}},
 			{
@@ -203,56 +242,57 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	peer := &Peer{
-		id:          rand.Int63(),
-		pc:          pc,
-		ws:          ws,
-		tracks:      make(map[string]*webrtc.TrackLocalStaticRTP),
-		peerSenders: make(map[int64][]*webrtc.RTPSender),
-		roomId:      roomId,
+		id: rand.Int63(), pc: pc, ws: ws,
+		tracks:       make(map[string]*webrtc.TrackLocalStaticRTP),
+		peerSenders:  make(map[int64][]*webrtc.RTPSender),
+		remoteTracks: make(map[string]*webrtc.TrackRemote),
+		roomId:       roomId,
 	}
 
-	// Add transceivers for receiving media from THIS peer
-	// We want to receive 1 audio and 1 video from the client
 	pc.AddTransceiverFromKind(webrtc.RTPCodecTypeVideo, webrtc.RTPTransceiverInit{Direction: webrtc.RTPTransceiverDirectionRecvonly})
 	pc.AddTransceiverFromKind(webrtc.RTPCodecTypeAudio, webrtc.RTPTransceiverInit{Direction: webrtc.RTPTransceiverDirectionRecvonly})
 
-	// Join Room logic
 	roomsMu.Lock()
 	room, exists := rooms[roomId]
 	if !exists {
-		room = &Room{
-			id: roomId, peers: make(map[int64]*Peer),
-			title: title, meetingType: meetingType, createdAt: time.Now(),
-		}
+		room = &Room{id: roomId, peers: make(map[int64]*Peer), title: title, meetingType: meetingType, createdAt: time.Now()}
 		rooms[roomId] = room
 		saveRoomToRedis(room)
 		room.timer = time.AfterFunc(10*time.Minute, func() { endRoom(room) })
-		log.Println("Created room:", roomId)
 	}
 	roomsMu.Unlock()
 
 	room.mu.Lock()
-
-	// 1. Add Existing Peers' tracks to New Peer (Fix for Latency)
+	// Add existing tracks to new peer
 	for _, other := range room.peers {
+		other.mu.RLock()
 		for _, track := range other.tracks {
-			// AddTrack auto-creates a SendOnly transceiver
 			sender, err := peer.pc.AddTrack(track)
 			if err != nil {
-				log.Printf("Failed to add track from %d to %d: %v", other.id, peer.id, err)
 				continue
 			}
+			peer.mu.Lock()
 			peer.peerSenders[other.id] = append(peer.peerSenders[other.id], sender)
+			peer.mu.Unlock()
+			if track.Kind() == webrtc.RTPCodecTypeVideo {
+				forwardPLI(sender, other, track.ID())
+				// Request keyframe for immediate video
+				go func(src *Peer, trackID string) {
+					time.Sleep(100 * time.Millisecond)
+					src.mu.RLock()
+					if remoteTrack, ok := src.remoteTracks[trackID]; ok {
+						requestKeyframe(src, uint32(remoteTrack.SSRC()))
+					}
+					src.mu.RUnlock()
+				}(other, track.ID())
+			}
 		}
+		other.mu.RUnlock()
 	}
-
 	room.peers[peer.id] = peer
 	updateRoomPeerCount(roomId, len(room.peers))
 	room.mu.Unlock()
 
-	log.Printf("Peer %d joined room %s", peer.id, roomId)
-
-	// ICE Handling
 	pc.OnICECandidate(func(c *webrtc.ICECandidate) {
 		if c != nil {
 			peer.wsMu.Lock()
@@ -261,22 +301,22 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	})
 
-	// OnTrack: Handle INCOMING streams from this peer
 	pc.OnTrack(func(track *webrtc.TrackRemote, _ *webrtc.RTPReceiver) {
-		log.Printf("Peer %d sent track: %s (%s)", peer.id, track.ID(), track.Kind())
+		peer.mu.Lock()
+		peer.remoteTracks[track.ID()] = track
+		peer.mu.Unlock()
 
-		// Create local track to forward to others
-		// IMPORTANT: Use peer.id as StreamID so frontend groups A/V correctly
 		streamId := fmt.Sprintf("%d", peer.id)
 		local, err := webrtc.NewTrackLocalStaticRTP(track.Codec().RTPCodecCapability, track.ID(), streamId)
 		if err != nil {
-			log.Println("NewTrackLocalStaticRTP error:", err)
 			return
 		}
 
+		peer.mu.Lock()
 		peer.tracks[track.ID()] = local
+		peer.mu.Unlock()
 
-		// Start forwarding loop
+		// Start reading packets immediately
 		go func() {
 			buf := make([]byte, 1500)
 			for {
@@ -290,157 +330,166 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 			}
 		}()
 
-		// Broadcast this new track to all existing peers
+		// Distribute to other peers
 		roomsMu.Lock()
 		r := rooms[peer.roomId]
 		roomsMu.Unlock()
-		if r == nil {
-			return
-		}
 
-		r.mu.Lock()
-		for _, other := range r.peers {
-			if other.id == peer.id {
-				continue
+		if r != nil {
+			r.mu.Lock()
+			peersToUpdate := make([]*Peer, 0)
+			for _, other := range r.peers {
+				if other.id == peer.id {
+					continue
+				}
+				sender, err := other.pc.AddTrack(local)
+				if err != nil {
+					log.Printf("Failed to add track to peer %d: %v", other.id, err)
+					continue
+				}
+
+				other.mu.Lock()
+				other.peerSenders[peer.id] = append(other.peerSenders[peer.id], sender)
+				other.mu.Unlock()
+
+				if track.Kind() == webrtc.RTPCodecTypeVideo {
+					forwardPLI(sender, peer, track.ID())
+				}
+				peersToUpdate = append(peersToUpdate, other)
+			}
+			r.mu.Unlock()
+
+			// Renegotiate after releasing locks to avoid deadlock
+			for _, other := range peersToUpdate {
+				go renegotiate(other)
 			}
 
-			// Add the new track to the other peer
-			sender, err := other.pc.AddTrack(local)
-			if err != nil {
-				log.Println("AddTrack error:", err)
-				continue
+			// Request keyframe after peers have renegotiated
+			if track.Kind() == webrtc.RTPCodecTypeVideo {
+				go func(src *Peer, ssrc uint32) {
+					time.Sleep(500 * time.Millisecond) // Wait for renegotiation
+					requestKeyframe(src, ssrc)
+					time.Sleep(1 * time.Second) // Request again for reliability
+					requestKeyframe(src, ssrc)
+				}(peer, uint32(track.SSRC()))
 			}
-			other.peerSenders[peer.id] = append(other.peerSenders[peer.id], sender)
-
-			// Renegotiate so they see the new track
-			go renegotiate(other)
 		}
-		r.mu.Unlock()
 	})
 
-	// Send Initial Offer (includes any existing tracks we added in step 1)
 	renegotiate(peer)
-
 	go readLoop(peer)
 }
 
+func endRoom(room *Room) {
+	room.mu.Lock()
+	peers := make([]*Peer, 0, len(room.peers))
+	for _, p := range room.peers {
+		peers = append(peers, p)
+	}
+	room.mu.Unlock()
+	for _, peer := range peers {
+		peer.wsMu.Lock()
+		peer.ws.WriteJSON(map[string]any{"type": "room-ended", "message": "Time limit reached"})
+		peer.wsMu.Unlock()
+		peer.pc.Close()
+		peer.ws.Close()
+	}
+	roomsMu.Lock()
+	delete(rooms, room.id)
+	roomsMu.Unlock()
+	deleteRoomFromRedis(room.id)
+}
+
 func renegotiate(p *Peer) {
+	// Small delay to batch multiple track additions
+	time.Sleep(50 * time.Millisecond)
+
 	p.wsMu.Lock()
 	defer p.wsMu.Unlock()
-
 	if p.negotiating {
-		p.needsRenegotiation = true
 		return
 	}
-	p.negotiating = true
 
+	// Check if peer connection is still valid
+	if p.pc == nil || p.pc.ConnectionState() == webrtc.PeerConnectionStateClosed {
+		return
+	}
+
+	p.negotiating = true
 	offer, err := p.pc.CreateOffer(nil)
 	if err != nil {
-		log.Println("CreateOffer error:", err)
+		log.Printf("Failed to create offer for peer %d: %v", p.id, err)
 		p.negotiating = false
 		return
 	}
 
-	if err := p.pc.SetLocalDescription(offer); err != nil {
-		log.Println("SetLocalDescription error:", err)
+	err = p.pc.SetLocalDescription(offer)
+	if err != nil {
+		log.Printf("Failed to set local description for peer %d: %v", p.id, err)
 		p.negotiating = false
 		return
 	}
 
-	if err := p.ws.WriteJSON(map[string]any{"type": "offer", "sdp": offer}); err != nil {
-		log.Println("WriteJSON error:", err)
+	err = p.ws.WriteJSON(map[string]any{"type": "offer", "sdp": offer})
+	if err != nil {
+		log.Printf("Failed to send offer to peer %d: %v", p.id, err)
 		p.negotiating = false
 	}
 }
 
 func readLoop(p *Peer) {
 	defer func() {
-		// Cleanup
 		p.pc.Close()
-
 		roomsMu.Lock()
-		room := rooms[p.roomId]
-		roomsMu.Unlock()
-
-		if room != nil {
+		if room, ok := rooms[p.roomId]; ok {
 			room.mu.Lock()
 			delete(room.peers, p.id)
-
-			// Remove this peer's tracks from everyone else
 			for _, other := range room.peers {
+				other.mu.Lock()
 				if senders, ok := other.peerSenders[p.id]; ok {
-					for _, sender := range senders {
-						other.pc.RemoveTrack(sender)
+					for _, s := range senders {
+						other.pc.RemoveTrack(s)
 					}
 					delete(other.peerSenders, p.id)
-					go renegotiate(other) // Trigger update for removal
+					go renegotiate(other)
 				}
-
-				// Notify frontend
+				other.mu.Unlock()
 				other.wsMu.Lock()
 				other.ws.WriteJSON(map[string]any{"type": "peer-left", "peerId": fmt.Sprintf("%d", p.id)})
 				other.wsMu.Unlock()
 			}
-
-			count := len(room.peers)
-			updateRoomPeerCount(p.roomId, count)
-
-			if count == 0 {
+			updateRoomPeerCount(p.roomId, len(room.peers))
+			if len(room.peers) == 0 {
 				if room.timer != nil {
 					room.timer.Stop()
 				}
-				deleteRoomFromRedis(p.roomId)
-				roomsMu.Lock()
 				delete(rooms, p.roomId)
-				roomsMu.Unlock()
-				room.mu.Unlock() // unlock before log/return
-				log.Println("Room destroyed:", p.roomId)
-				return
+				deleteRoomFromRedis(p.roomId)
 			}
 			room.mu.Unlock()
 		}
-		p.ws.Close()
+		roomsMu.Unlock()
 	}()
-
 	for {
 		var msg map[string]any
 		if err := p.ws.ReadJSON(&msg); err != nil {
 			return
 		}
-
 		switch msg["type"] {
 		case "answer":
 			sdpStr, _ := msg["sdp"].(map[string]any)["sdp"].(string)
-			if err := p.pc.SetRemoteDescription(webrtc.SessionDescription{
-				Type: webrtc.SDPTypeAnswer,
-				SDP:  sdpStr,
-			}); err != nil {
-				log.Println("SetRemoteDesc error:", err)
-				continue
-			}
-
-			// Lock strictly for flag update to avoid race
+			// Lower bitrate to reduce delay
+			sdpStr = strings.ReplaceAll(sdpStr, "useinbandfec=1", "useinbandfec=1;x-google-max-bitrate=800")
+			p.pc.SetRemoteDescription(webrtc.SessionDescription{Type: webrtc.SDPTypeAnswer, SDP: sdpStr})
 			p.wsMu.Lock()
 			p.negotiating = false
-			if p.needsRenegotiation {
-				p.needsRenegotiation = false
-				p.wsMu.Unlock()
-				go renegotiate(p)
-			} else {
-				p.wsMu.Unlock()
-			}
-
+			p.wsMu.Unlock()
 		case "ice":
 			raw := msg["candidate"].(map[string]any)
-			candidateStr, _ := raw["candidate"].(string)
-			sdpMid, _ := raw["sdpMid"].(string)
-			sdpMLineIndex := uint16(raw["sdpMLineIndex"].(float64))
-
-			p.pc.AddICECandidate(webrtc.ICECandidateInit{
-				Candidate:     candidateStr,
-				SDPMid:        &sdpMid,
-				SDPMLineIndex: &sdpMLineIndex,
-			})
+			c, _ := raw["candidate"].(string)
+			mid, _ := raw["sdpMid"].(string)
+			idx := uint16(raw["sdpMLineIndex"].(float64))
+			p.pc.AddICECandidate(webrtc.ICECandidateInit{Candidate: c, SDPMid: &mid, SDPMLineIndex: &idx})
 		}
 	}
 }

@@ -6,17 +6,16 @@
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<!-- Modal for room details -->
 <div id="roomModal" class="modal">
   <div class="modal-content">
-    <h2>Create Meeting Room</h2>
+    <h2>Create Room</h2>
     <div class="form-group">
-      <label for="meetingTitle">Meeting Title</label>
-      <input id="meetingTitle" type="text" placeholder="Enter meeting title" maxlength="100" />
+      <label for="meetingTitle">Room Title</label>
+      <input id="meetingTitle" type="text" placeholder="Enter room title" maxlength="100" />
       <small id="titleCounter">0/100 characters</small>
     </div>
     <div class="form-group">
-      <label for="meetingType">Meeting Type</label>
+      <label for="meetingType">Room Type</label>
       <select id="meetingType">
         <option value="">Select type</option>
         <option value="debate">Debate</option>
@@ -26,11 +25,11 @@
         <option value="other">Other</option>
       </select>
     </div>
+    
     <div class="form-group">
-      <label for="roomName">Room ID</label>
-      <input id="roomName" type="text" placeholder="Enter unique room ID" maxlength="50" />
-      <small>This will be used to join the room</small>
+        <small style="color: #888;">* A unique Room ID will be generated automatically.</small>
     </div>
+
     <div>
       <button class="btn-primary" onclick="submitRoomDetails()">Create & Join</button>
       <button class="btn-secondary" onclick="closeModal()">Cancel</button>
@@ -57,7 +56,6 @@
 </div>
 
 <script>
-// Character counter for meeting title
 document.addEventListener('DOMContentLoaded', () => {
   const titleInput = document.getElementById('meetingTitle')
   if (titleInput) {
@@ -66,17 +64,13 @@ document.addEventListener('DOMContentLoaded', () => {
       counter.textContent = `${e.target.value.length}/100 characters`
     })
   }
-  
-  // Load active rooms on page load
   refreshRooms()
-  
-  // Auto-refresh rooms every 5 seconds
   setInterval(refreshRooms, 5000)
 })
 
 async function refreshRooms() {
   try {
-    const response = await fetch('http://localhost:8080/rooms')
+    const response = await fetch('/rooms') // simplified path
     const rooms = await response.json()
     
     const container = document.getElementById('activeRooms')
@@ -91,7 +85,7 @@ async function refreshRooms() {
       const badgeClass = `badge-${room.meetingType}`
       
       return `
-        <div class="room-card" onclick="joinRoomById('${room.id}')">
+        <div class="room-card" onclick="joinRoomById('${room.id}')" style="cursor:pointer; border:1px solid #ccc; padding:10px; margin:5px;">
           <div class="room-info">
             <h3>${room.title || room.id}</h3>
             <p>
@@ -99,8 +93,8 @@ async function refreshRooms() {
               <span style="color: #999;">Room ID: ${room.id}</span>
             </p>
             <p style="font-size: 12px;">
-              👥 ${room.peerCount} participant${room.peerCount !== 1 ? 's' : ''} | 
-              ⏱️ Expires in ${expiresIn} min
+              ${room.peerCount} participant${room.peerCount !== 1 ? 's' : ''} | 
+              Expires in ${expiresIn} min
             </p>
           </div>
         </div>
@@ -108,12 +102,10 @@ async function refreshRooms() {
     }).join('')
   } catch (error) {
     console.error('Failed to load rooms:', error)
-    document.getElementById('activeRooms').innerHTML = '<p style="color: red;">Failed to load rooms</p>'
   }
 }
 
 function joinRoomById(roomId) {
-  // Redirect to room page
   window.location.href = `/room.html?room=${encodeURIComponent(roomId)}`
 }
 
@@ -123,36 +115,28 @@ function showCreateRoomModal() {
 
 function closeModal() {
   document.getElementById('roomModal').style.display = 'none'
-  // Clear form
   document.getElementById('meetingTitle').value = ''
   document.getElementById('meetingType').value = ''
-  document.getElementById('roomName').value = ''
   document.getElementById('titleCounter').textContent = '0/100 characters'
 }
 
 function submitRoomDetails() {
   const title = document.getElementById('meetingTitle').value.trim()
   const type = document.getElementById('meetingType').value
-  const roomName = document.getElementById('roomName').value.trim()
   
   if (!title) {
-    alert('Please enter a meeting title')
-    return
-  }
-  if (title.length > 100) {
-    alert('Title must be 100 characters or less')
+    alert('Please enter a room title')
     return
   }
   if (!type) {
-    alert('Please select a meeting type')
-    return
-  }
-  if (!roomName) {
-    alert('Please enter a room ID')
+    alert('Please select a room type')
     return
   }
   
-  // Redirect to room page with parameters
+  // Generate random Room ID (12 chars)
+  const roomName = Math.random().toString(36).substring(2, 8) + Math.random().toString(36).substring(2, 8);
+  
+  // Redirect
   window.location.href = `/room.html?room=${encodeURIComponent(roomName)}&title=${encodeURIComponent(title)}&type=${encodeURIComponent(type)}`
 }
 
@@ -162,11 +146,8 @@ function joinExistingRoom() {
     alert('Please enter a room ID')
     return
   }
-  
-  // Redirect to room page
   window.location.href = `/room.html?room=${encodeURIComponent(roomName)}`
 }
-
 </script>
 </body>
 </html>

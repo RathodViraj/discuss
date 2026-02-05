@@ -181,9 +181,18 @@ button:disabled {
   border: 5px red double;
   min-height: 100px;
   padding: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  /* align-items: center; */
+  /* justify-content: center; */
+  gap: 10px;
 }
 
 #currentRoom {
   margin-top: 10px;
   font-weight: bold;
+}
+
+.peer-wrapper {
+  transition: order 0.5s ease-in-out; 
 }

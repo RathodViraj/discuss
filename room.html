@@ -2,18 +2,18 @@
 <html>
 <head>
 <meta charset="utf-8"> 
-<title>Meeting Room - SFU</title>
+<title>Room - SFU</title>
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
 <div class="container">
-  <h2 id="roomTitle">Meeting Room</h2>
+  <h2 id="roomTitle">Room</h2>
   <div id="roomInfo" style="margin-bottom: 15px; color: #666;"></div>
   
   <div>
     <button id="toggleVideo" onclick="toggleVideo()">Video Off</button>
     <button id="toggleAudio" onclick="toggleAudio()">Audio Off</button>
-    <button id="quitBtn" onclick="quit()">Leave Meeting</button>
+    <button id="quitBtn" onclick="quit()">Leave Room</button>
   </div>
 </div>
 
@@ -31,7 +31,6 @@
 let pc, ws, pendingIce = []
 let localStream
 let videoTrack, audioTrack
-let currentRoom = null
 const remoteStreams = new Map()
 
 // Helper to get room details from URL
@@ -71,10 +70,13 @@ async function join(roomName, title = '', meetingType = '') {
   // 2. Create PC
   pc = new RTCPeerConnection({
     iceServers: [
-      { urls: "stun:stun.l.google.com:19302" },
-      { urls: "turn:openrelay.metered.ca:80", username: "openrelayproject", credential: "openrelayproject" }
-    ]
-  })
+      { urls: ["stun:stun.l.google.com:19302"] },
+      {
+        urls: ["turn:openrelay.metered.ca:80"],
+        username: "openrelayproject",
+        credential: "openrelayproject",
+      }
+  ]})
 
   // 3. Add Local Tracks
   localStream.getTracks().forEach(t => pc.addTrack(t, localStream))
@@ -88,50 +90,55 @@ async function join(roomName, title = '', meetingType = '') {
 
   // 5. Handle Incoming Tracks
   pc.ontrack = e => {
-    // The server sets the Stream ID to the Peer ID.
-    // If the server hasn't attached a track properly, e.streams might be empty.
-    if (!e.streams || e.streams.length === 0) {
-      console.log("Received track without stream, ignoring/waiting...")
-      return
-    }
+    if (!e.streams || e.streams.length === 0) return
 
     const stream = e.streams[0]
-    const peerId = stream.id // Server sets this to peerID
+    const peerId = stream.id 
     const kind = e.track.kind
     
-    console.log(`Received ${kind} track for peer ${peerId}`)
+    console.log(`Received ${kind} track for peer ${peerId}, stream has ${stream.getTracks().length} tracks`)
 
     let container = remoteStreams.get(peerId)
     
-    // Create new container if this peer is new
     if (!container) {
-      console.log(`Creating new container for peer ${peerId}`)
-      
+      // Create Peer UI Wrapper
       const wrapper = document.createElement('div')
       wrapper.id = 'peer-' + peerId
       wrapper.className = 'peer-wrapper'
-      wrapper.style.cssText = 'display:inline-block; margin:10px; position:relative;'
+      wrapper.style.cssText = 'display:inline-block; margin:10px; position:relative; transition: all 0.3s ease;'
       
       const video = document.createElement('video')
       video.autoplay = true
       video.playsInline = true
-      // Don't mute remote videos!
-      video.style.cssText = 'width:300px; border:1px solid #ccc; background:#000;'
+      video.style.cssText = 'width:300px; border:2px solid #ccc; background:#000; border-radius: 8px;'
       video.srcObject = stream
       
       wrapper.appendChild(video)
       document.getElementById('remotes').appendChild(wrapper)
       
-      container = { wrapper, video, stream }
+      container = { wrapper, video, stream, volume: 0, audioCtx: null, analyser: null }
       remoteStreams.set(peerId, container)
+      
+      // Force play immediately
+      setTimeout(() => {
+        video.play().catch(e => console.log("Autoplay blocked:", e))
+      }, 100)
+    } else {
+      // Always update the stream to include new tracks
+      console.log(`Updating stream for peer ${peerId}`)
+      container.stream = stream
+      container.video.srcObject = stream
+      
+      // Force play again
+      setTimeout(() => {
+        container.video.play().catch(e => console.log("Autoplay blocked:", e))
+      }, 100)
     }
 
-    // Since we assigned `video.srcObject = stream` above, 
-    // and the browser automatically updates the MediaStream when tracks are added,
-    // we don't need to manually attach tracks to the video element again 
-    // IF the stream reference is the same (which it usually is).
-    // Just ensure the track is enabled.
-    e.track.enabled = true
+    // Setup audio analysis for audio tracks
+    if (kind === 'audio' && !container.analyser) {
+      setupAudioAnalysis(stream, container)
+    }
   }
 
   // 6. Connect WebSocket
@@ -149,7 +156,6 @@ async function join(roomName, title = '', meetingType = '') {
       await pc.setLocalDescription(ans)
       ws.send(JSON.stringify({type:"answer", sdp:pc.localDescription}))
       
-      // Flush pending ICE
       pendingIce.forEach(c => pc.addIceCandidate(c))
       pendingIce = []
     }
@@ -159,9 +165,11 @@ async function join(roomName, title = '', meetingType = '') {
     }
     else if (msg.type === "peer-left") {
       const id = msg.peerId
-      console.log("Peer left:", id)
       const container = remoteStreams.get(id)
       if (container) {
+        if (container.audioCtx) {
+          container.audioCtx.close()
+        }
         container.wrapper.remove()
         remoteStreams.delete(id)
       }
@@ -172,6 +180,60 @@ async function join(roomName, title = '', meetingType = '') {
     }
   }
 }
+
+// --- AUDIO LOGIC ---
+
+function setupAudioAnalysis(stream, container) {
+  try {
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    
+    // Resume context if suspended
+    if (audioCtx.state === 'suspended') {
+      audioCtx.resume();
+    }
+    
+    const source = audioCtx.createMediaStreamSource(stream);
+    const analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 256; 
+    source.connect(analyser);
+
+    container.audioCtx = audioCtx;
+    container.analyser = analyser;
+    
+    console.log(`Audio analysis setup for peer ${stream.id}`);
+  } catch(e) {
+    console.error("Audio analysis failed:", e);
+  }
+}
+
+// Polling loop for volume (every 100ms)
+setInterval(() => {
+  remoteStreams.forEach(container => {
+    if (!container.analyser) return;
+    const data = new Uint8Array(container.analyser.frequencyBinCount);
+    container.analyser.getByteFrequencyData(data);
+    let sum = 0;
+    for(let i=0; i<data.length; i++) sum += data[i];
+    container.volume = sum / data.length;
+  });
+}, 100);
+
+// Sorting loop (every 500ms)
+setInterval(() => {
+  const peers = Array.from(remoteStreams.values());
+  peers.sort((a, b) => b.volume - a.volume);
+
+  peers.forEach((container, index) => {
+    if(container.wrapper) {
+      container.wrapper.style.order = index;
+      if(index === 0 && container.volume > 10) {
+        container.video.style.borderColor = "#4CAF50"; // Green border for speaker
+      } else {
+        container.video.style.borderColor = "#ccc";
+      }
+    }
+  });
+}, 500);
 
 function toggleVideo() {
   if (videoTrack) {
@@ -191,6 +253,9 @@ function quit() {
   if (localStream) localStream.getTracks().forEach(t => t.stop())
   if (pc) pc.close()
   if (ws) ws.close()
+  remoteStreams.forEach(container => {
+    if (container.audioCtx) container.audioCtx.close()
+  })
   window.location.href = '/index.html'
 }
 </script>
