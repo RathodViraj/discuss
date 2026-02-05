@@ -27,6 +27,10 @@
   <div id="remotes"></div>
 </div>
 
+<footer class="footer">
+  <p>Follow creator on <a href="http://www.linkedin.com/in/viraj-rathod-058ba4280" target="_blank">LinkedIn</a> and <a href="https://github.com/RathodViraj" target="_blank">GitHub</a></p>
+</footer>
+
 <script>
 let pc, ws, pendingIce = []
 let localStream
@@ -142,7 +146,8 @@ async function join(roomName, title = '', meetingType = '') {
   }
 
   // 6. Connect WebSocket
-  let wsUrl = `ws://${window.location.host}/ws?room=${encodeURIComponent(roomName)}`
+  const backendBase = "discuss-hkih.onrender.com"
+  let wsUrl = `wss://${backendBase}/ws?room=${encodeURIComponent(roomName)}`
   ws = new WebSocket(wsUrl)
 
   ws.onopen = () => console.log("WebSocket connected")

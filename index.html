@@ -55,7 +55,13 @@
   </div>
 </div>
 
+<footer class="footer">
+  <p>Follow creator on <a href="http://www.linkedin.com/in/viraj-rathod-058ba4280" target="_blank">LinkedIn</a> and <a href="https://github.com/RathodViraj" target="_blank">GitHub</a></p>
+</footer>
+
 <script>
+let baseURL = "https://discuss-hkih.onrender.com/"
+
 document.addEventListener('DOMContentLoaded', () => {
   const titleInput = document.getElementById('meetingTitle')
   if (titleInput) {
@@ -70,7 +76,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 async function refreshRooms() {
   try {
-    const response = await fetch('/rooms') // simplified path
+    const response = await fetch(baseURL + 'rooms') // simplified path
     const rooms = await response.json()
     
     const container = document.getElementById('activeRooms')
