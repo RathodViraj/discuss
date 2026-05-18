@@ -13,6 +13,7 @@
   <div>
     <button id="toggleVideo" onclick="toggleVideo()">Video Off</button>
     <button id="toggleAudio" onclick="toggleAudio()">Audio Off</button>
+    <button id="shareScreen" onclick="toggleScreenShare()">Share Screen</button>
     <button id="quitBtn" onclick="quit()">Leave Room</button>
   </div>
 </div>
@@ -35,6 +36,9 @@
 let pc, ws, pendingIce = []
 let localStream
 let videoTrack, audioTrack
+let screenStream = null
+let screenTrack = null
+let originalVideoTrack = null
 const remoteStreams = new Map()
 
 // Helper to get room details from URL
@@ -146,10 +150,17 @@ async function join(roomName, title = '', meetingType = '') {
       video.style.cssText = 'width:300px; border:2px solid #ccc; background:#000; border-radius: 8px;'
       video.srcObject = stream
       
+      // Add screen share indicator
+      const indicator = document.createElement('div')
+      indicator.className = 'screen-indicator'
+      indicator.textContent = 'Sharing Screen'
+      indicator.style.cssText = 'position:absolute; top:10px; left:10px; background:rgba(76,175,80,0.9); color:white; padding:5px 10px; border-radius:5px; font-size:12px; display:none;'
+      
       wrapper.appendChild(video)
+      wrapper.appendChild(indicator)
       document.getElementById('remotes').appendChild(wrapper)
       
-      container = { wrapper, video, stream, volume: 0, audioCtx: null, analyser: null }
+      container = { wrapper, video, stream, volume: 0, audioCtx: null, analyser: null, indicator }
       remoteStreams.set(peerId, container)
       
       // Force play immediately
@@ -166,6 +177,28 @@ async function join(roomName, title = '', meetingType = '') {
       setTimeout(() => {
         container.video.play().catch(e => console.log("Autoplay blocked:", e))
       }, 100)
+    }
+    
+    // Detect screen sharing (screen tracks usually have higher resolution)
+    if (kind === 'video') {
+      e.track.onended = () => {
+        // Track ended, might have switched back to camera
+        if (container.indicator) container.indicator.style.display = 'none'
+      }
+      
+      // Check track settings to detect screen share
+      const settings = e.track.getSettings()
+      if (settings.width > 1920 || settings.displaySurface === 'monitor') {
+        if (container.indicator) {
+          container.indicator.style.display = 'block'
+          container.video.style.width = '450px' // Make screen shares bigger
+        }
+      } else {
+        if (container.indicator) {
+          container.indicator.style.display = 'none'
+          container.video.style.width = '300px' // Normal camera size
+        }
+      }
     }
 
     // Setup audio analysis for audio tracks
@@ -283,7 +316,89 @@ function toggleAudio() {
   }
 }
 
+async function toggleScreenShare() {
+  const btn = document.getElementById('shareScreen')
+  
+  if (screenStream) {
+    // Stop screen sharing
+    stopScreenShare()
+    btn.textContent = 'Share Screen'
+    return
+  }
+  
+  try {
+    // Get screen capture
+    screenStream = await navigator.mediaDevices.getDisplayMedia({ 
+      video: { 
+        cursor: "always",
+        displaySurface: "monitor"
+      }, 
+      audio: false 
+    })
+    
+    screenTrack = screenStream.getVideoTracks()[0]
+    
+    // Save original video track
+    if (!originalVideoTrack) {
+      originalVideoTrack = videoTrack
+    }
+    
+    // Find the sender that's sending our video
+    const senders = pc.getSenders()
+    const videoSender = senders.find(sender => 
+      sender.track && sender.track.kind === 'video'
+    )
+    
+    if (videoSender) {
+      // Replace camera video with screen video
+      await videoSender.replaceTrack(screenTrack)
+      console.log('Screen sharing started')
+      
+      // Update local preview
+      document.getElementById('local').srcObject = screenStream
+      
+      btn.textContent = 'Stop Sharing'
+      
+      // Handle when user clicks "Stop sharing" in browser
+      screenTrack.onended = () => {
+        stopScreenShare()
+        btn.textContent = 'Share Screen'
+      }
+    }
+  } catch (err) {
+    console.error('Screen share error:', err)
+    alert('Could not start screen sharing: ' + err.message)
+  }
+}
+
+function stopScreenShare() {
+  if (!screenStream) return
+  
+  // Stop screen tracks
+  screenStream.getTracks().forEach(t => t.stop())
+  
+  // Find video sender and restore original camera
+  const senders = pc.getSenders()
+  const videoSender = senders.find(sender => 
+    sender.track && sender.track.kind === 'video'
+  )
+  
+  if (videoSender && originalVideoTrack) {
+    videoSender.replaceTrack(originalVideoTrack)
+    console.log('Screen sharing stopped, camera restored')
+  }
+  
+  // Restore local preview to camera
+  document.getElementById('local').srcObject = localStream
+  
+  screenStream = null
+  screenTrack = null
+}
+
 function quit() {
+  if (screenStream) {
+    screenStream.getTracks().forEach(t => t.stop())
+  }
   if (localStream) localStream.getTracks().forEach(t => t.stop())
   if (pc) pc.close()
   if (ws) ws.close()
