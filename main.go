@@ -84,7 +84,6 @@ func main() {
 	http.Handle("/", http.FileServer(http.Dir(".")))
 	http.HandleFunc("/ws", wsHandler)
 	http.HandleFunc("/rooms", getRoomsHandler)
-	http.HandleFunc("/ice", iceHandler)
 
 	log.Printf("SFU listening on :%s", port)
 	log.Fatal(http.ListenAndServe(":"+port, nil))
@@ -152,68 +151,6 @@ func getRoomsHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	rooms, _ := getAllRoomsFromRedis()
 	json.NewEncoder(w).Encode(rooms)
-}
-
-// getICEServersFromEnv builds the ICE server list from environment variables.
-// - ICE_STUN_URLS: comma-separated STUN URLs
-// - ICE_TURN_URLS: comma-separated TURN/URLS
-// - TURN_USERNAME / TURN_CREDENTIAL: credentials for TURN servers (optional)
-func getICEServersFromEnv() []webrtc.ICEServer {
-	stun := os.Getenv("ICE_STUN_URLS")
-	turn := os.Getenv("ICE_TURN_URLS")
-	username := os.Getenv("TURN_USERNAME")
-	credential := os.Getenv("TURN_CREDENTIAL")
-	var servers []webrtc.ICEServer
-
-	if stun != "" {
-		for _, u := range strings.Split(stun, ",") {
-			u = strings.TrimSpace(u)
-			if u == "" {
-				continue
-			}
-			servers = append(servers, webrtc.ICEServer{URLs: []string{u}})
-		}
-	}
-
-	if turn != "" {
-		for _, u := range strings.Split(turn, ",") {
-			u = strings.TrimSpace(u)
-			if u == "" {
-				continue
-			}
-			s := webrtc.ICEServer{URLs: []string{u}}
-			if username != "" || credential != "" {
-				s.Username = username
-				s.Credential = credential
-			}
-			servers = append(servers, s)
-		}
-	}
-
-	if len(servers) == 0 {
-		servers = []webrtc.ICEServer{{URLs: []string{"stun:stun.relay.metered.ca:80"}}}
-	}
-	return servers
-}
-
-func iceHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-
-	servers := getICEServersFromEnv()
-
-	type outServer struct {
-		URLs       []string `json:"urls"`
-		Username   string   `json:"username,omitempty"`
-		Credential string   `json:"credential,omitempty"`
-	}
-
-	var out []outServer
-	for _, s := range servers {
-		out = append(out, outServer{URLs: s.URLs, Username: s.Username, Credential: s.Credential.(string)})
-	}
-
-	resp := map[string]any{"iceServers": out}
-	json.NewEncoder(w).Encode(resp)
 }
 
 // --- Video Logic ---
@@ -291,7 +228,29 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 	api := webrtc.NewAPI(webrtc.WithMediaEngine(m))
 
 	pc, err := api.NewPeerConnection(webrtc.Configuration{
-		ICEServers:         getICEServersFromEnv(),
+		ICEServers: []webrtc.ICEServer{
+			{URLs: []string{"stun:stun.relay.metered.ca:80"}},
+			{
+				URLs:       []string{"turn:global.relay.metered.ca:80"},
+				Username:   "f358091188d50dfcfc0a96ce",
+				Credential: "7cHWPVPt4N2vedaP",
+			},
+			{
+				URLs:       []string{"turn:global.relay.metered.ca:80?transport=tcp"},
+				Username:   "f358091188d50dfcfc0a96ce",
+				Credential: "7cHWPVPt4N2vedaP",
+			},
+			{
+				URLs:       []string{"turn:global.relay.metered.ca:443"},
+				Username:   "f358091188d50dfcfc0a96ce",
+				Credential: "7cHWPVPt4N2vedaP",
+			},
+			{
+				URLs:       []string{"turns:global.relay.metered.ca:443?transport=tcp"},
+				Username:   "f358091188d50dfcfc0a96ce",
+				Credential: "7cHWPVPt4N2vedaP",
+			},
+		},
 		ICETransportPolicy: webrtc.ICETransportPolicyRelay,
 	})
 	if err != nil {
