@@ -1,159 +1,191 @@
 <!doctype html>
-<html>
+<html lang="en">
 <head>
-<meta charset="utf-8"> 
-<title>Simple SFU - Home</title>
-<link rel="stylesheet" href="style.css">
+  <meta charset="utf-8"> 
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Simple SFU - Home</title>
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<div id="roomModal" class="modal">
-  <div class="modal-content">
-    <h2>Create Room</h2>
-    <div class="form-group">
-      <label for="meetingTitle">Room Title</label>
-      <input id="meetingTitle" type="text" placeholder="Enter room title" maxlength="100" />
-      <small id="titleCounter">0/100 characters</small>
-    </div>
-    <div class="form-group">
-      <label for="meetingType">Room Type</label>
-      <select id="meetingType">
-        <option value="">Select type</option>
-        <option value="debate">Debate</option>
-        <option value="unpopular-opinion">Unpopular Opinion</option>
-        <option value="ragebait">Ragebait</option>
-        <option value="discuss">Discuss</option>
-        <option value="other">Other</option>
-      </select>
-    </div>
-    
-    <div class="form-group">
-        <small style="color: #888;">* A unique Room ID will be generated automatically.</small>
-    </div>
 
-    <div>
-      <button class="btn-primary" onclick="submitRoomDetails()">Create & Join</button>
-      <button class="btn-secondary" onclick="closeModal()">Cancel</button>
-    </div>
-  </div>
-</div>
-
-<div class="container">
-  <h2>Room Management</h2>
-  <div>
-    <button onclick="showCreateRoomModal()">Create New Room</button>
-    <span style="margin: 0 10px;">OR</span>
-    <input id="roomInput" type="text" placeholder="Enter room ID to join" style="padding: 5px; width: 200px;" />
-    <button onclick="joinExistingRoom()">Join Existing Room</button>
-  </div>
-</div>
-
-<div class="container">
-  <h2>Active Rooms</h2>
-  <button onclick="refreshRooms()">Refresh</button>
-  <div id="activeRooms" style="margin-top: 10px;">
-    <p style="color: #666;">Loading rooms...</p>
-  </div>
-</div>
-
-<footer class="footer">
-  <p>Follow creator on <a href="http://www.linkedin.com/in/viraj-rathod-058ba4280" target="_blank">LinkedIn</a> and <a href="https://github.com/RathodViraj" target="_blank">GitHub</a></p>
-</footer>
-
-<script>
-let baseURL = "https://discuss-hkih.onrender.com/"
-
-document.addEventListener('DOMContentLoaded', () => {
-  const titleInput = document.getElementById('meetingTitle')
-  if (titleInput) {
-    titleInput.addEventListener('input', (e) => {
-      const counter = document.getElementById('titleCounter')
-      counter.textContent = `${e.target.value.length}/100 characters`
-    })
-  }
-  refreshRooms()
-  setInterval(refreshRooms, 5000)
-})
-
-async function refreshRooms() {
-  try {
-    const response = await fetch(baseURL + 'rooms') // simplified path
-    const rooms = await response.json()
-    
-    const container = document.getElementById('activeRooms')
-    
-    if (!rooms || rooms.length === 0) {
-      container.innerHTML = '<p style="color: #666;">No active rooms</p>'
-      return
-    }
-    
-    container.innerHTML = rooms.map(room => {
-      const expiresIn = Math.max(0, Math.floor((new Date(room.expiresAt) - new Date()) / 1000 / 60))
-      const badgeClass = `badge-${room.meetingType}`
+  <!-- Create Room Modal -->
+  <div id="roomModal" class="modal" onclick="handleOutsideClick(event)">
+    <div class="modal-content">
+      <h2>Create Room</h2>
       
-      return `
-        <div class="room-card" onclick="joinRoomById('${room.id}')" style="cursor:pointer; border:1px solid #ccc; padding:10px; margin:5px;">
-          <div class="room-info">
-            <h3>${room.title || room.id}</h3>
-            <p>
-              <span class="room-badge ${badgeClass}">${room.meetingType}</span>
-              <span style="color: #999;">Room ID: ${room.id}</span>
-            </p>
-            <p style="font-size: 12px;">
-              ${room.peerCount} participant${room.peerCount !== 1 ? 's' : ''} | 
-              Expires in ${expiresIn} min
-            </p>
-          </div>
-        </div>
-      `
-    }).join('')
-  } catch (error) {
-    console.error('Failed to load rooms:', error)
-  }
-}
+      <div class="form-group">
+        <label for="meetingTitle">Room Title</label>
+        <input id="meetingTitle" type="text" placeholder="Enter room title" maxlength="100" />
+        <small id="titleCounter">0/100 characters</small>
+      </div>
+      
+      <div class="form-group">
+        <label for="meetingType">Room Type</label>
+        <select id="meetingType">
+          <option value="">Select type</option>
+          <option value="debate">Debate</option>
+          <option value="unpopular-opinion">Unpopular Opinion</option>
+          <option value="ragebait">Ragebait</option>
+          <option value="discuss">Discuss</option>
+          <option value="other">Other</option>
+        </select>
+      </div>
+      
+      <div class="form-group" style="margin-bottom: 24px;">
+        <small style="color: var(--text-muted);">* A unique Room ID will be generated automatically.</small>
+      </div>
 
-function joinRoomById(roomId) {
-  window.location.href = `/room.html?room=${encodeURIComponent(roomId)}`
-}
+      <div style="display: flex; gap: 8px;">
+        <button class="btn-primary" onclick="submitRoomDetails()">Create & Join</button>
+        <button class="btn-secondary" onclick="closeModal()">Cancel</button>
+      </div>
+    </div>
+  </div>
 
-function showCreateRoomModal() {
-  document.getElementById('roomModal').style.display = 'block'
-}
+  <!-- Room Management Container -->
+  <div class="container">
+    <h2>Room Management</h2>
+    <div class="room-join-panel">
+      <button onclick="showCreateRoomModal()">Create New Room</button>
+      <span class="room-join-divider">OR</span>
+      <input id="roomInput" type="text" placeholder="Enter room ID to join" />
+      <button onclick="joinExistingRoom()">Join Existing Room</button>
+    </div>
+  </div>
 
-function closeModal() {
-  document.getElementById('roomModal').style.display = 'none'
-  document.getElementById('meetingTitle').value = ''
-  document.getElementById('meetingType').value = ''
-  document.getElementById('titleCounter').textContent = '0/100 characters'
-}
+  <!-- Active Rooms Container -->
+  <div class="container" style="margin-bottom: 60px;">
+    <h2>Active Rooms</h2>
+    <div style="margin-bottom: 16px;">
+      <button class="btn-secondary" onclick="refreshRooms()">Refresh</button>
+    </div>
+    <div id="activeRooms">
+      <p style="color: var(--text-muted);">Loading rooms...</p>
+    </div>
+  </div>
 
-function submitRoomDetails() {
-  const title = document.getElementById('meetingTitle').value.trim()
-  const type = document.getElementById('meetingType').value
-  
-  if (!title) {
-    alert('Please enter a room title')
-    return
-  }
-  if (!type) {
-    alert('Please select a room type')
-    return
-  }
-  
-  // Generate random Room ID (12 chars)
-  const roomName = Math.random().toString(36).substring(2, 8) + Math.random().toString(36).substring(2, 8);
-  
-  // Redirect
-  window.location.href = `/room.html?room=${encodeURIComponent(roomName)}&title=${encodeURIComponent(title)}&type=${encodeURIComponent(type)}`
-}
+  <footer class="footer">
+    <p>Follow creator on 
+      <a href="http://www.linkedin.com/in/viraj-rathod-058ba4280" target="_blank" rel="noopener">LinkedIn</a> and 
+      <a href="https://github.com/RathodViraj" target="_blank" rel="noopener">GitHub</a>
+    </p>
+  </footer>
 
-function joinExistingRoom() {
-  const roomName = document.getElementById('roomInput').value.trim()
-  if (!roomName) {
-    alert('Please enter a room ID')
-    return
-  }
-  window.location.href = `/room.html?room=${encodeURIComponent(roomName)}`
-}
-</script>
+  <script>
+    let baseURL = "https://discuss-hkih.onrender.com/"
+
+    document.addEventListener('DOMContentLoaded', () => {
+      const titleInput = document.getElementById('meetingTitle');
+      if (titleInput) {
+        titleInput.addEventListener('input', (e) => {
+          const counter = document.getElementById('titleCounter');
+          counter.textContent = `${e.target.value.length}/100 characters`;
+        });
+      }
+      refreshRooms();
+      // Poll active rooms list every 5 seconds
+      setInterval(refreshRooms, 5000);
+    });
+
+    async function refreshRooms() {
+      try {
+        const response = await fetch(baseURL + 'rooms');
+        const rooms = await response.json();
+        const container = document.getElementById('activeRooms');
+        
+        if (!rooms || rooms.length === 0) {
+          container.innerHTML = `
+            <div style="grid-column: 1/-1; padding: 24px; border: 1px dashed var(--border-color); border-radius: 6px; text-align: center; background: #ffffff;">
+              <p style="color: var(--text-muted); font-size: 0.9rem;">No active rooms</p>
+            </div>`;
+          return;
+        }
+        
+        container.innerHTML = rooms.map(room => {
+          const expiresIn = Math.max(0, Math.floor((new Date(room.expiresAt) - new Date()) / 1000 / 60));
+          const badgeClass = `badge-${room.meetingType}`;
+          const peerText = `${room.peerCount} participant${room.peerCount !== 1 ? 's' : ''}`;
+          const expiryText = expiresIn <= 0 ? 'Expires in 0 min' : `Expires in ${expiresIn} min`;
+          
+          return `
+            <div class="room-card" onclick="joinRoomById('${room.id}')" style="cursor: pointer;">
+              <div class="room-info">
+                <h3>${escapeHTML(room.title) || room.id}</h3>
+                <p style="margin-top: 6px;">
+                  <span class="room-badge ${badgeClass}">${room.meetingType}</span>
+                  <span>Room ID: ${room.id}</span>
+                </p>
+              </div>
+              <div class="room-stats">
+                <span>👤 ${peerText}</span>
+                <span>⏱️ ${expiryText}</span>
+              </div>
+            </div>
+          `;
+        }).join('');
+      } catch (error) {
+        console.error('Failed to load rooms:', error);
+      }
+    }
+
+    function escapeHTML(str) {
+      if (!str) return '';
+      return str.replace(/[&<>'"]/g, 
+        tag => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[tag] || tag)
+      );
+    }
+
+    function joinRoomById(roomId) {
+      window.location.href = `/room.html?room=${encodeURIComponent(roomId)}`;
+    }
+
+    function showCreateRoomModal() {
+      document.getElementById('roomModal').style.display = 'block';
+      document.getElementById('meetingTitle').focus();
+    }
+
+    function closeModal() {
+      document.getElementById('roomModal').style.display = 'none';
+      document.getElementById('meetingTitle').value = '';
+      document.getElementById('meetingType').value = '';
+      document.getElementById('titleCounter').textContent = '0/100 characters';
+    }
+
+    function handleOutsideClick(event) {
+      const modal = document.getElementById('roomModal');
+      if (event.target === modal) {
+        closeModal();
+      }
+    }
+
+    function submitRoomDetails() {
+      const title = document.getElementById('meetingTitle').value.trim();
+      const type = document.getElementById('meetingType').value;
+      
+      if (!title) {
+        alert('Please enter a room title');
+        return;
+      }
+      if (!type) {
+        alert('Please select a room type');
+        return;
+      }
+      
+      // Generate random Room ID (12 chars)
+      const roomName = Math.random().toString(36).substring(2, 8) + Math.random().toString(36).substring(2, 8);
+      
+      // Redirect
+      window.location.href = `/room.html?room=${encodeURIComponent(roomName)}`;
+    }
+
+    function joinExistingRoom() {
+      const roomName = document.getElementById('roomInput').value.trim();
+      if (!roomName) {
+        alert('Please enter a room ID');
+        return;
+      }
+      window.location.href = `/room.html?room=${encodeURIComponent(roomName)}`;
+    }
+  </script>
 </body>
 </html>

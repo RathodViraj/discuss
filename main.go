@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"math/rand"
+	"mime"
 	"net/http"
 	"os"
 	"sfu/db"
@@ -65,6 +66,9 @@ var (
 )
 
 func main() {
+	mime.AddExtensionType(".css", "text/css")
+	mime.AddExtensionType(".js", "application/javascript")
+
 	if err := godotenv.Load(); err != nil {
 		log.Println("No .env file found")
 	}
@@ -84,6 +88,7 @@ func main() {
 	http.Handle("/", http.FileServer(http.Dir(".")))
 	http.HandleFunc("/ws", wsHandler)
 	http.HandleFunc("/rooms", getRoomsHandler)
+	http.HandleFunc("/room-info", getRoomInfoHandler)
 
 	log.Printf("SFU listening on :%s", port)
 	log.Fatal(http.ListenAndServe(":"+port, nil))
@@ -151,6 +156,27 @@ func getRoomsHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	rooms, _ := getAllRoomsFromRedis()
 	json.NewEncoder(w).Encode(rooms)
+}
+
+func getRoomInfoHandler(w http.ResponseWriter, r *http.Request) {
+	roomId := r.URL.Query().Get("roomID")
+	if roomId == "" {
+		http.Error(w, "Missing roomID", http.StatusBadRequest)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	data, err := RedisClient.Get(ctx, "room:"+roomId).Bytes()
+	if err != nil {
+		http.Error(w, "Room not found", http.StatusNotFound)
+		return
+	}
+	var roomInfo RoomInfo
+	if json.Unmarshal(data, &roomInfo) != nil {
+		http.Error(w, "Failed to parse room info", http.StatusInternalServerError)
+		return
+	}
+	json.NewEncoder(w).Encode(roomInfo)
 }
 
 // --- Video Logic ---
@@ -229,7 +255,12 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 
 	pc, err := api.NewPeerConnection(webrtc.Configuration{
 		ICEServers: []webrtc.ICEServer{
-			{URLs: []string{"stun:stun.relay.metered.ca:80"}},
+			{URLs: []string{"stun:stun.l.google.com:19302", "stun:stun.relay.metered.ca:80"}},
+			{
+				URLs:       []string{"turn:openrelay.metered.ca:80"},
+				Username:   "openrelayproject",
+				Credential: "openrelayproject",
+			},
 			{
 				URLs:       []string{"turn:global.relay.metered.ca:80"},
 				Username:   "f358091188d50dfcfc0a96ce",

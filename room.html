@@ -1,85 +1,139 @@
 <!doctype html>
-<html>
+<html lang="en">
 <head>
-<meta charset="utf-8"> 
-<title>Room - SFU</title>
-<link rel="stylesheet" href="style.css">
+  <meta charset="utf-8"> 
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Room - SFU</title>
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<div class="container">
-  <h2 id="roomTitle">Room</h2>
-  <div id="roomInfo" style="margin-bottom: 15px; color: #666;"></div>
-  
-  <div>
-    <button id="toggleVideo" onclick="toggleVideo()">Video Off</button>
-    <button id="toggleAudio" onclick="toggleAudio()">Audio Off</button>
-    <button id="shareScreen" onclick="toggleScreenShare()">Share Screen</button>
-    <button id="quitBtn" onclick="quit()">Leave Room</button>
+
+  <div class="container" style="margin-top: 40px; margin-bottom: 100px;">
+    <!-- Room Header -->
+    <div class="room-header">
+      <div style="display: flex; flex-direction: column; gap: 6px;">
+        <h2 id="roomTitle" style="margin-bottom: 0; border-bottom: none; padding-bottom: 0;">Room</h2>
+        <div id="roomInfo" class="room-info"></div>
+      </div>
+      <div class="room-actions">
+        <button id="toggleVideo" class="btn-control active" onclick="toggleVideo()">Video Off</button>
+        <button id="toggleAudio" class="btn-control active" onclick="toggleAudio()">Audio Off</button>
+        <button id="shareScreen" class="btn-control" onclick="toggleScreenShare()">Share Screen</button>
+        <button id="quitBtn" class="btn-danger" onclick="quit()">Leave Room</button>
+      </div>
+    </div>
+    
+    <div class="room-content-wrapper" id="roomContentWrapper">
+      <!-- Upper Layout: User Video -->
+      <div class="upper-layout" id="upperLayout">
+        <!-- Local Camera Feed (User Window) -->
+        <div class="video-card local-card">
+          <h3>Your Video</h3>
+          <div class="video-wrapper local-video-wrapper" style="position: relative;">
+            <video id="local" autoplay playsinline muted></video>
+            <div class="peer-label">You</div>
+            <button class="fullscreen-btn" onclick="toggleFullScreen(this)" title="Fullscreen">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Bottom Layout: Remote Feeds Grid (Participants Window) -->
+      <div class="video-card participants-card">
+        <h3>Participants</h3>
+        <div class="participants-scroll-container">
+          <div id="remotes" class="participants-grid"></div>
+        </div>
+      </div>
+    </div>
   </div>
-</div>
 
-<div class="container">
-  <h3>Your Video</h3>
-  <video id="local" autoplay playsinline muted></video>
-</div>
+  <footer class="footer">
+    <p>Follow creator on 
+      <a href="http://www.linkedin.com/in/viraj-rathod-058ba4280" target="_blank" rel="noopener">LinkedIn</a> and 
+      <a href="https://github.com/RathodViraj" target="_blank" rel="noopener">GitHub</a>
+    </p>
+  </footer>
 
-<div class="container">
-  <h3>Participants</h3>
-  <div id="remotes"></div>
-</div>
+  <script>
+    let pc, ws, pendingIce = []
+    let localStream
+    let videoTrack, audioTrack
+    let screenStream = null
+    let screenTrack = null
+    let originalVideoTrack = null
+    const remoteStreams = new Map()
 
-<footer class="footer">
-  <p>Follow creator on <a href="http://www.linkedin.com/in/viraj-rathod-058ba4280" target="_blank">LinkedIn</a> and <a href="https://github.com/RathodViraj" target="_blank">GitHub</a></p>
-</footer>
+    // Helper to get room details from URL
+    const urlParams = new URLSearchParams(window.location.search)
+    const roomId = urlParams.get('room')
+    const title = urlParams.get('title') || ''
+    const meetingType = urlParams.get('type') || ''
 
-<script>
-let pc, ws, pendingIce = []
-let localStream
-let videoTrack, audioTrack
-let screenStream = null
-let screenTrack = null
-let originalVideoTrack = null
-const remoteStreams = new Map()
+    if (!roomId) {
+      alert('No room specified')
+      window.location.href = '/index.html'
+    }
 
-// Helper to get room details from URL
-const urlParams = new URLSearchParams(window.location.search)
-const roomId = urlParams.get('room')
-const title = urlParams.get('title') || ''
-const meetingType = urlParams.get('type') || ''
+    const baseURL = window.location.origin === "null" || !window.location.origin.startsWith("http") 
+      ? "http://localhost:8080/" 
+      : window.location.origin + "/";
 
-if (!roomId) {
-  alert('No room specified')
-  window.location.href = '/index.html'
-}
-
-document.getElementById('roomTitle').textContent = title || `Room: ${roomId}`
-if (meetingType) {
-  document.getElementById('roomInfo').innerHTML = `<span class="room-badge badge-${meetingType}">${meetingType}</span> <span>ID: ${roomId}</span>`
-} else {
-  document.getElementById('roomInfo').textContent = `Room ID: ${roomId}`
-}
-
-window.addEventListener('DOMContentLoaded', () => join(roomId, title, meetingType))
-
-async function join(roomName, title = '', meetingType = '') {
-  if (pc && pc.connectionState !== 'closed') return;
+    document.getElementById('roomTitle').textContent = title || `Room: ${roomId}`
   
-  // 1. Get User Media
-  try {
-    localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-    document.getElementById('local').srcObject = localStream
-    videoTrack = localStream.getVideoTracks()[0]
-    audioTrack = localStream.getAudioTracks()[0]
-  } catch (e) {
-    console.error("Could not get user media", e)
-    return
-  }
+    async function fetchRoomInfo(roomId) {
+      try {
+        const response = await fetch(`${baseURL}room-info?roomID=${encodeURIComponent(roomId)}`);
+        if (!response.ok) throw new Error('Failed to fetch room info');
+        const info = await response.json();
+        
+        if (info.title) {
+          document.getElementById('roomTitle').textContent = info.title;
+        }
+        if (info.meetingType) {
+          document.getElementById('roomInfo').innerHTML = `
+            <span class="room-badge badge-${info.meetingType}">${info.meetingType}</span>
+            <span>ID: <strong id="roomIdVal">${escapeHTML(roomId)}</strong></span>
+            <button class="btn-copy" onclick="copyJoinLink()" title="Copy room invite link">Copy Link</button>
+          `;
+        }
+      } catch (err) {
+        console.warn('Could not load room info from server:', err);
+      }
+    }
 
-  // 2. Create PC
-  pc = new RTCPeerConnection({
-    iceServers: [
-      { urls: "stun:stun.relay.metered.ca:80" },
-      {
+    window.addEventListener('DOMContentLoaded', () => {
+      join(roomId, title, meetingType);
+      fetchRoomInfo(roomId);
+    });
+
+    async function join(roomName, title = '', meetingType = '') {
+      if (pc && pc.connectionState !== 'closed') return;
+      
+      // 1. Get User Media
+      try {
+        localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        document.getElementById('local').srcObject = localStream
+        videoTrack = localStream.getVideoTracks()[0]
+        audioTrack = localStream.getAudioTracks()[0]
+      } catch (e) {
+        console.error("Could not get user media", e)
+        return
+      }
+
+      // 2. Create Peer Connection
+      pc = new RTCPeerConnection({
+        iceServers: [
+          { urls: ["stun:stun.l.google.com:19302", "stun:stun.relay.metered.ca:80"] },
+          {
+            urls: ["turn:openrelay.metered.ca:80"],
+            username: "openrelayproject",
+            credential: "openrelayproject",
+          },
+          {
         urls: "turn:global.relay.metered.ca:80",
         username: "f358091188d50dfcfc0a96ce",
         credential: "7cHWPVPt4N2vedaP",
@@ -99,315 +153,375 @@ async function join(roomName, title = '', meetingType = '') {
         username: "f358091188d50dfcfc0a96ce",
         credential: "7cHWPVPt4N2vedaP",
       },
-
     ],
     iceTransportPolicy: "relay"
   })
 
-  // 3. Add Local Tracks
-  localStream.getTracks().forEach(t => pc.addTrack(t, localStream))
+      // 3. Add Local Tracks
+      localStream.getTracks().forEach(t => pc.addTrack(t, localStream))
 
-  // Debug: Log ICE and connection states
-  pc.oniceconnectionstatechange = () => {
-    console.log("ICE connection state:", pc.iceConnectionState)
-  }
-  pc.onconnectionstatechange = () => {
-    console.log("Connection state:", pc.connectionState)
-  }
-  pc.onicegatheringstatechange = () => {
-    console.log("ICE gathering state:", pc.iceGatheringState)
-  }
+      // Debug hooks
+      // pc.oniceconnectionstatechange = () => console.log("ICE connection state:", pc.iceConnectionState)
+      // pc.onconnectionstatechange = () => console.log("Connection state:", pc.connectionState)
+      // pc.onicegatheringstatechange = () => console.log("ICE gathering state:", pc.iceGatheringState)
 
-  // 4. Handle ICE
-  pc.onicecandidate = e => {
-    if (e.candidate && ws.readyState === WebSocket.OPEN) {
-      console.log("Sending ICE candidate:", e.candidate.candidate)
-      ws.send(JSON.stringify({type:"ice", candidate:e.candidate}))
-    }
-  }
-
-  // 5. Handle Incoming Tracks
-  pc.ontrack = e => {
-    if (!e.streams || e.streams.length === 0) return
-
-    const stream = e.streams[0]
-    const peerId = stream.id 
-    const kind = e.track.kind
-    
-    console.log(`Received ${kind} track for peer ${peerId}, stream has ${stream.getTracks().length} tracks`)
-
-    let container = remoteStreams.get(peerId)
-    
-    if (!container) {
-      // Create Peer UI Wrapper
-      const wrapper = document.createElement('div')
-      wrapper.id = 'peer-' + peerId
-      wrapper.className = 'peer-wrapper'
-      wrapper.style.cssText = 'display:inline-block; margin:10px; position:relative; transition: all 0.3s ease;'
-      
-      const video = document.createElement('video')
-      video.autoplay = true
-      video.playsInline = true
-      video.style.cssText = 'width:300px; border:2px solid #ccc; background:#000; border-radius: 8px;'
-      video.srcObject = stream
-      
-      // Add screen share indicator
-      const indicator = document.createElement('div')
-      indicator.className = 'screen-indicator'
-      indicator.textContent = 'Sharing Screen'
-      indicator.style.cssText = 'position:absolute; top:10px; left:10px; background:rgba(76,175,80,0.9); color:white; padding:5px 10px; border-radius:5px; font-size:12px; display:none;'
-      
-      wrapper.appendChild(video)
-      wrapper.appendChild(indicator)
-      document.getElementById('remotes').appendChild(wrapper)
-      
-      container = { wrapper, video, stream, volume: 0, audioCtx: null, analyser: null, indicator }
-      remoteStreams.set(peerId, container)
-      
-      // Force play immediately
-      setTimeout(() => {
-        video.play().catch(e => console.log("Autoplay blocked:", e))
-      }, 100)
-    } else {
-      // Always update the stream to include new tracks
-      console.log(`Updating stream for peer ${peerId}`)
-      container.stream = stream
-      container.video.srcObject = stream
-      
-      // Force play again
-      setTimeout(() => {
-        container.video.play().catch(e => console.log("Autoplay blocked:", e))
-      }, 100)
-    }
-    
-    // Detect screen sharing (screen tracks usually have higher resolution)
-    if (kind === 'video') {
-      e.track.onended = () => {
-        // Track ended, might have switched back to camera
-        if (container.indicator) container.indicator.style.display = 'none'
-      }
-      
-      // Check track settings to detect screen share
-      const settings = e.track.getSettings()
-      if (settings.width > 1920 || settings.displaySurface === 'monitor') {
-        if (container.indicator) {
-          container.indicator.style.display = 'block'
-          container.video.style.width = '450px' // Make screen shares bigger
-        }
-      } else {
-        if (container.indicator) {
-          container.indicator.style.display = 'none'
-          container.video.style.width = '300px' // Normal camera size
+      // 4. Handle ICE candidates
+      pc.onicecandidate = e => {
+        if (e.candidate && ws.readyState === WebSocket.OPEN) {
+          // console.log("Sending ICE candidate:", e.candidate.candidate)
+          ws.send(JSON.stringify({type:"ice", candidate:e.candidate}))
         }
       }
-    }
 
-    // Setup audio analysis for audio tracks
-    if (kind === 'audio' && !container.analyser) {
-      setupAudioAnalysis(stream, container)
-    }
-  }
+      // 5. Handle Incoming remote tracks
+      pc.ontrack = e => {
+        if (!e.streams || e.streams.length === 0) return
 
-  // 6. Connect WebSocket
-  const backendBase = "discuss-hkih.onrender.com"
-  let wsUrl = `wss://${backendBase}/ws?room=${encodeURIComponent(roomName)}`
-  ws = new WebSocket(wsUrl)
+        const stream = e.streams[0]
+        const peerId = stream.id 
+        const kind = e.track.kind
+        
+        // console.log(`Received ${kind} track for peer ${peerId}, stream has ${stream.getTracks().length} tracks`)
 
-  ws.onopen = () => console.log("WebSocket connected")
-  
-  ws.onmessage = async e => {
-    const msg = JSON.parse(e.data)
+        let container = remoteStreams.get(peerId)
+        
+        if (!container) {
+          // Create Peer UI wrapper card
+          const wrapper = document.createElement('div')
+          wrapper.id = 'peer-' + peerId
+          wrapper.className = 'peer-wrapper'
+          
+          const video = document.createElement('video')
+          video.autoplay = true
+          video.playsInline = true
+          video.srcObject = stream
+          
+          // Fullscreen Trigger button
+          const fsBtn = document.createElement('button')
+          fsBtn.className = 'fullscreen-btn'
+          fsBtn.title = 'Fullscreen'
+          fsBtn.innerHTML = `
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/>
+            </svg>`
+          fsBtn.onclick = () => toggleFullScreen(fsBtn)
+          
+          // Add screen share status text overlay
+          const indicator = document.createElement('div')
+          indicator.className = 'screen-indicator'
+          indicator.innerHTML = `
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:middle; margin-right:3px;">
+              <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>
+            </svg>
+            <span>Screen</span>
+          `
+          indicator.style.display = 'none'
 
-    if (msg.type === "offer") {
-      await pc.setRemoteDescription(msg.sdp)
-      const ans = await pc.createAnswer()
-      await pc.setLocalDescription(ans)
-      ws.send(JSON.stringify({type:"answer", sdp:pc.localDescription}))
-      
-      pendingIce.forEach(c => pc.addIceCandidate(c))
-      pendingIce = []
-    }
-    else if (msg.type === "ice") {
-      if (pc.remoteDescription) pc.addIceCandidate(msg.candidate)
-      else pendingIce.push(msg.candidate)
-    }
-    else if (msg.type === "peer-left") {
-      const id = msg.peerId
-      const container = remoteStreams.get(id)
-      if (container) {
-        if (container.audioCtx) {
-          container.audioCtx.close()
+          // Name label
+          const label = document.createElement('div')
+          label.className = 'peer-label'
+          label.textContent = `Peer ${peerId.substring(0, 6)}`
+          
+          wrapper.appendChild(video)
+          wrapper.appendChild(indicator)
+          wrapper.appendChild(label)
+          wrapper.appendChild(fsBtn)
+          document.getElementById('remotes').appendChild(wrapper)
+          
+          container = { wrapper, video, stream, volume: 0, audioCtx: null, analyser: null, indicator }
+          remoteStreams.set(peerId, container)
+          
+          // Size change tracking
+          video.addEventListener('resize', () => {
+            if (video.videoWidth > 1200) {
+              if (container.indicator) container.indicator.style.display = 'flex';
+            } else {
+              if (container.indicator) container.indicator.style.display = 'none';
+            }
+          });
+          
+          // Force play
+          setTimeout(() => {
+            video.play().catch(err => console.log("Autoplay blocked:", err))
+          }, 100)
+        } else {
+          // console.log(`Updating stream for peer ${peerId}`)
+          container.stream = stream
+          container.video.srcObject = stream
+          
+          setTimeout(() => {
+            container.video.play().catch(err => console.log("Autoplay blocked:", err))
+          }, 100)
         }
-        container.wrapper.remove()
-        remoteStreams.delete(id)
+        
+        // Initial checks on incoming track
+        if (kind === 'video') {
+          e.track.onended = () => {
+            if (container.indicator) container.indicator.style.display = 'none'
+          }
+          
+          const settings = e.track.getSettings()
+          if (settings.width > 1200 || settings.displaySurface === 'monitor') {
+            if (container.indicator) container.indicator.style.display = 'flex'
+          }
+        }
+
+        // Setup audio analysis
+        if (kind === 'audio' && !container.analyser) {
+          setupAudioAnalysis(stream, container)
+        }
+      }
+
+      // 6. Connect WebSocket dynamically
+      const backendBase = "discuss-hkih.onrender.com"
+      let wsUrl = `wss://${backendBase}/ws?room=${encodeURIComponent(roomName)}`
+      ws = new WebSocket(wsUrl)
+
+      ws.onopen = () => console.log("WebSocket connected")
+      
+      ws.onmessage = async e => {
+        const msg = JSON.parse(e.data)
+
+        if (msg.type === "offer") {
+          await pc.setRemoteDescription(msg.sdp)
+          const ans = await pc.createAnswer()
+          await pc.setLocalDescription(ans)
+          ws.send(JSON.stringify({type:"answer", sdp:pc.localDescription}))
+          
+          pendingIce.forEach(c => pc.addIceCandidate(c))
+          pendingIce = []
+        }
+        else if (msg.type === "ice") {
+          if (pc.remoteDescription) pc.addIceCandidate(msg.candidate)
+          else pendingIce.push(msg.candidate)
+        }
+        else if (msg.type === "peer-left") {
+          const id = msg.peerId
+          const container = remoteStreams.get(id)
+          if (container) {
+            if (container.audioCtx) {
+              container.audioCtx.close()
+            }
+            container.wrapper.remove()
+            remoteStreams.delete(id)
+          }
+        }
+        else if (msg.type === "room-ended") {
+          alert(msg.message)
+          quit()
+        }
       }
     }
-    else if (msg.type === "room-ended") {
-      alert(msg.message)
-      quit()
-    }
-  }
-}
 
-// --- AUDIO LOGIC ---
+    // --- AUDIO LOGIC ---
 
-function setupAudioAnalysis(stream, container) {
-  try {
-    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    
-    // Resume context if suspended
-    if (audioCtx.state === 'suspended') {
-      audioCtx.resume();
-    }
-    
-    const source = audioCtx.createMediaStreamSource(stream);
-    const analyser = audioCtx.createAnalyser();
-    analyser.fftSize = 256; 
-    source.connect(analyser);
+    function setupAudioAnalysis(stream, container) {
+      try {
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        if (audioCtx.state === 'suspended') {
+          audioCtx.resume();
+        }
+        const source = audioCtx.createMediaStreamSource(stream);
+        const analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 256; 
+        source.connect(analyser);
 
-    container.audioCtx = audioCtx;
-    container.analyser = analyser;
-    
-    console.log(`Audio analysis setup for peer ${stream.id}`);
-  } catch(e) {
-    console.error("Audio analysis failed:", e);
-  }
-}
-
-// Polling loop for volume (every 100ms)
-setInterval(() => {
-  remoteStreams.forEach(container => {
-    if (!container.analyser) return;
-    const data = new Uint8Array(container.analyser.frequencyBinCount);
-    container.analyser.getByteFrequencyData(data);
-    let sum = 0;
-    for(let i=0; i<data.length; i++) sum += data[i];
-    container.volume = sum / data.length;
-  });
-}, 100);
-
-// Sorting loop (every 500ms)
-setInterval(() => {
-  const peers = Array.from(remoteStreams.values());
-  peers.sort((a, b) => b.volume - a.volume);
-
-  peers.forEach((container, index) => {
-    if(container.wrapper) {
-      container.wrapper.style.order = index;
-      if(index === 0 && container.volume > 10) {
-        container.video.style.borderColor = "#4CAF50"; // Green border for speaker
-      } else {
-        container.video.style.borderColor = "#ccc";
+        container.audioCtx = audioCtx;
+        container.analyser = analyser;
+        
+        // console.log(`Audio analysis setup for peer ${stream.id}`);
+      } catch(e) {
+        console.error("Audio analysis failed:", e);
       }
     }
-  });
-}, 500);
 
-function toggleVideo() {
-  if (videoTrack) {
-    videoTrack.enabled = !videoTrack.enabled
-    document.getElementById('toggleVideo').textContent = videoTrack.enabled ? 'Video Off' : 'Video On'
-  }
-}
+    // Polling loop for volume (every 100ms)
+    setInterval(() => {
+      remoteStreams.forEach(container => {
+        if (!container.analyser) return;
+        const data = new Uint8Array(container.analyser.frequencyBinCount);
+        container.analyser.getByteFrequencyData(data);
+        let sum = 0;
+        for(let i=0; i<data.length; i++) sum += data[i];
+        container.volume = sum / data.length;
+      });
+    }, 100);
 
-function toggleAudio() {
-  if (audioTrack) {
-    audioTrack.enabled = !audioTrack.enabled
-    document.getElementById('toggleAudio').textContent = audioTrack.enabled ? 'Audio Off' : 'Audio On'
-  }
-}
+    // Sorting and Speaker detection (solid border outline - every 500ms)
+    setInterval(() => {
+      const peers = Array.from(remoteStreams.values());
+      peers.sort((a, b) => b.volume - a.volume);
 
-async function toggleScreenShare() {
-  const btn = document.getElementById('shareScreen')
-  
-  if (screenStream) {
-    // Stop screen sharing
-    stopScreenShare()
-    btn.textContent = 'Share Screen'
-    return
-  }
-  
-  try {
-    // Get screen capture
-    screenStream = await navigator.mediaDevices.getDisplayMedia({ 
-      video: { 
-        cursor: "always",
-        displaySurface: "monitor"
-      }, 
-      audio: false 
-    })
-    
-    screenTrack = screenStream.getVideoTracks()[0]
-    
-    // Save original video track
-    if (!originalVideoTrack) {
-      originalVideoTrack = videoTrack
+      peers.forEach((container, index) => {
+        if(container.wrapper) {
+          container.wrapper.style.order = index;
+          if(index === 0 && container.volume > 10) {
+            container.wrapper.classList.add('active-speaker');
+          } else {
+            container.wrapper.classList.remove('active-speaker');
+          }
+        }
+      });
+    }, 500);
+
+    // Toggles
+    function toggleVideo() {
+      if (videoTrack) {
+        videoTrack.enabled = !videoTrack.enabled
+        const btn = document.getElementById('toggleVideo')
+        btn.textContent = videoTrack.enabled ? 'Video Off' : 'Video On'
+        btn.classList.toggle('active', videoTrack.enabled)
+      }
     }
-    
-    // Find the sender that's sending our video
-    const senders = pc.getSenders()
-    const videoSender = senders.find(sender => 
-      sender.track && sender.track.kind === 'video'
-    )
-    
-    if (videoSender) {
-      // Replace camera video with screen video
-      await videoSender.replaceTrack(screenTrack)
-      console.log('Screen sharing started')
+
+    function toggleAudio() {
+      if (audioTrack) {
+        audioTrack.enabled = !audioTrack.enabled
+        const btn = document.getElementById('toggleAudio')
+        btn.textContent = audioTrack.enabled ? 'Audio Off' : 'Audio On'
+        btn.classList.toggle('active', audioTrack.enabled)
+      }
+    }
+
+    async function toggleScreenShare() {
+      const btn = document.getElementById('shareScreen')
       
-      // Update local preview
-      document.getElementById('local').srcObject = screenStream
-      
-      btn.textContent = 'Stop Sharing'
-      
-      // Handle when user clicks "Stop sharing" in browser
-      screenTrack.onended = () => {
+      if (screenStream) {
         stopScreenShare()
         btn.textContent = 'Share Screen'
+        btn.classList.remove('active')
+        return
+      }
+      
+      try {
+        screenStream = await navigator.mediaDevices.getDisplayMedia({ 
+          video: { 
+            cursor: "always",
+            displaySurface: "monitor"
+          }, 
+          audio: false 
+        })
+        
+        screenTrack = screenStream.getVideoTracks()[0]
+        
+        if (!originalVideoTrack) {
+          originalVideoTrack = videoTrack
+        }
+        
+        const senders = pc.getSenders()
+        const videoSender = senders.find(sender => 
+          sender.track && sender.track.kind === 'video'
+        )
+        
+        if (videoSender) {
+          await videoSender.replaceTrack(screenTrack)
+          console.log('Screen sharing started')
+          document.getElementById('local').srcObject = screenStream
+          
+          btn.textContent = 'Stop Sharing'
+          btn.classList.add('active')
+          
+          screenTrack.onended = () => {
+            stopScreenShare()
+            btn.textContent = 'Share Screen'
+            btn.classList.remove('active')
+          }
+        }
+      } catch (err) {
+        console.error('Screen share error:', err)
+        alert('Could not start screen sharing: ' + err.message)
       }
     }
-  } catch (err) {
-    console.error('Screen share error:', err)
-    alert('Could not start screen sharing: ' + err.message)
-  }
-}
 
-function stopScreenShare() {
-  if (!screenStream) return
-  
-  // Stop screen tracks
-  screenStream.getTracks().forEach(t => t.stop())
-  
-  // Find video sender and restore original camera
-  const senders = pc.getSenders()
-  const videoSender = senders.find(sender => 
-    sender.track && sender.track.kind === 'video'
-  )
-  
-  if (videoSender && originalVideoTrack) {
-    videoSender.replaceTrack(originalVideoTrack)
-    console.log('Screen sharing stopped, camera restored')
-  }
-  
-  // Restore local preview to camera
-  document.getElementById('local').srcObject = localStream
-  
-  screenStream = null
-  screenTrack = null
-}
+    function stopScreenShare() {
+      if (!screenStream) return
+      
+      screenStream.getTracks().forEach(t => t.stop())
+      
+      const senders = pc.getSenders()
+      const videoSender = senders.find(sender => 
+        sender.track && sender.track.kind === 'video'
+      )
+      
+      if (videoSender && originalVideoTrack) {
+        videoSender.replaceTrack(originalVideoTrack)
+        console.log('Screen sharing stopped, camera restored')
+      }
+      
+      document.getElementById('local').srcObject = localStream
+      screenStream = null
+      screenTrack = null
+    }
 
-function quit() {
-  if (screenStream) {
-    screenStream.getTracks().forEach(t => t.stop())
-  }
-  if (localStream) localStream.getTracks().forEach(t => t.stop())
-  if (pc) pc.close()
-  if (ws) ws.close()
-  remoteStreams.forEach(container => {
-    if (container.audioCtx) container.audioCtx.close()
-  })
-  window.location.href = '/index.html'
-}
-</script>
+    // --- MAXIMIZE CONTROLS (CSS OVERLAY METHOD) ---
+
+    function toggleFullScreen(btn) {
+      const container = btn.closest('.peer-wrapper') || btn.closest('.video-card');
+      if (!container) return;
+
+      const isMaximized = container.classList.toggle('maximized');
+
+      if (isMaximized) {
+        btn.innerHTML = `
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 4px; display: inline-block; vertical-align: middle;">
+            <path d="M19 12H5M12 19l-7-7 7-7"/>
+          </svg> Back`;
+        btn.title = "Minimize";
+        btn.classList.add('maximized-btn');
+      } else {
+        btn.innerHTML = `
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/>
+          </svg>`;
+        btn.title = "Maximize";
+        btn.classList.remove('maximized-btn');
+      }
+    }
+
+
+
+    // --- LINK CLIPBOARD COPY ---
+
+    function copyJoinLink() {
+      const joinUrl = window.location.origin + `/room.html?room=${encodeURIComponent(roomId)}`;
+      navigator.clipboard.writeText(joinUrl).then(() => {
+        const btn = document.querySelector('.btn-copy');
+        const originalText = btn.textContent;
+        btn.textContent = 'Copied!';
+        btn.style.backgroundColor = '#10b981';
+        btn.style.color = '#ffffff';
+        btn.style.borderColor = 'transparent';
+        
+        setTimeout(() => {
+          btn.textContent = originalText;
+          btn.style.backgroundColor = '';
+          btn.style.color = '';
+          btn.style.borderColor = '';
+        }, 2000);
+      }).catch(err => {
+        console.error('Failed to copy link:', err);
+      });
+    }
+
+    function escapeHTML(str) {
+      if (!str) return '';
+      return str.replace(/[&<>'"]/g, 
+        tag => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[tag] || tag)
+      );
+    }
+
+    function quit() {
+      if (screenStream) {
+        screenStream.getTracks().forEach(t => t.stop())
+      }
+      if (localStream) localStream.getTracks().forEach(t => t.stop())
+      if (pc) pc.close()
+      if (ws) ws.close()
+      remoteStreams.forEach(container => {
+        if (container.audioCtx) container.audioCtx.close()
+      })
+      window.location.href = '/index.html'
+    }
+  </script>
 </body>
 </html>

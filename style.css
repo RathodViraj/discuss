@@ -1,17 +1,184 @@
-/* General Styles */
-body {
-  font-family: Arial, sans-serif;
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+:root {
+  --bg-primary: #fafafa;
+  --bg-secondary: #ffffff;
+  --border-color: #e4e4e7; /* Zinc 200 */
+  --border-focus: #3b82f6; /* Blue 500 */
+  --text-main: #18181b;    /* Zinc 900 */
+  --text-muted: #71717a;   /* Zinc 500 */
+  
+  --primary-accent: #2563eb;      /* Blue 600 */
+  --primary-accent-hover: #1d4ed8; /* Blue 700 */
+  --danger-accent: #dc2626;       /* Red 600 */
+  --danger-accent-hover: #b91c1c;  /* Red 700 */
+  
+  --font-family: 'Inter', -apple-system, sans-serif;
+  --card-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05), 0 1px 2px -1px rgba(0, 0, 0, 0.05);
+}
+
+/* Reset and Global Styles */
+* {
+  box-sizing: border-box;
   margin: 0;
   padding: 0;
 }
 
-video {
-  width: 300px;
-  border: 1px solid black;
-  margin: 5px;
+body {
+  font-family: var(--font-family);
+  background-color: var(--bg-primary);
+  color: var(--text-main);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
 }
 
-/* Modal Styles */
+/* Layout Container */
+.container {
+  max-width: 1100px;
+  width: 90%;
+  margin: 40px auto;
+  padding: 24px;
+  border-radius: 8px;
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  box-shadow: var(--card-shadow);
+}
+
+.container h2 {
+  font-size: 1.5rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  margin-bottom: 20px;
+  color: var(--text-main);
+  border-bottom: 1px solid var(--border-color);
+  padding-bottom: 12px;
+}
+
+.container h3 {
+  font-size: 1.15rem;
+  font-weight: 600;
+  margin-bottom: 12px;
+  color: var(--text-main);
+}
+
+/* Buttons */
+button, .btn-primary, .btn-secondary {
+  font-family: var(--font-family);
+  font-weight: 500;
+  font-size: 0.875rem;
+  padding: 8px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  border: 1px solid transparent;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 38px;
+  transition: all 0.15s ease;
+}
+
+/* Default buttons (Standard blue) */
+button, .btn-primary {
+  background-color: var(--primary-accent);
+  color: #ffffff;
+}
+
+button:hover, .btn-primary:hover {
+  background-color: var(--primary-accent-hover);
+}
+
+button:active, .btn-primary:active {
+  transform: translateY(0);
+}
+
+button:disabled, .btn-primary:disabled {
+  background-color: #e4e4e7;
+  color: #a1a1aa;
+  cursor: not-allowed;
+}
+
+.btn-secondary {
+  background-color: #ffffff;
+  color: #27272a;
+  border: 1px solid var(--border-color);
+}
+
+.btn-secondary:hover {
+  background-color: #f4f4f5;
+  border-color: #d4d4d8;
+}
+
+.btn-danger {
+  background-color: var(--danger-accent);
+  color: #ffffff;
+}
+
+.btn-danger:hover {
+  background-color: var(--danger-accent-hover);
+}
+
+/* Controls inside rooms */
+.btn-control {
+  background-color: #ffffff;
+  color: #27272a;
+  border: 1px solid var(--border-color);
+  box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+}
+
+.btn-control:hover {
+  background-color: #f4f4f5;
+  border-color: #d4d4d8;
+}
+
+.btn-control.active {
+  background-color: #eff6ff;
+  color: #1d4ed8;
+  border-color: #bfdbfe;
+}
+
+/* Form Styles */
+.form-group {
+  margin-bottom: 18px;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 6px;
+  font-weight: 500;
+  font-size: 0.875rem;
+  color: #27272a;
+}
+
+.form-group input, .form-group select {
+  width: 100%;
+  padding: 8px 12px;
+  background-color: #ffffff;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  color: var(--text-main);
+  font-family: var(--font-family);
+  font-size: 0.875rem;
+  outline: none;
+  transition: all 0.15s ease;
+}
+
+.form-group input:focus, .form-group select:focus {
+  border-color: var(--border-focus);
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15);
+}
+
+.form-group small {
+  display: block;
+  margin-top: 6px;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+/* Modals */
 .modal {
   display: none;
   position: fixed;
@@ -20,194 +187,637 @@ video {
   top: 0;
   width: 100%;
   height: 100%;
-  background-color: rgba(0,0,0,0.5);
+  background-color: rgba(9, 9, 11, 0.4);
 }
 
 .modal-content {
-  background-color: white;
-  margin: 10% auto;
-  padding: 30px;
-  border: 1px solid #888;
-  width: 400px;
+  background-color: var(--bg-secondary);
+  margin: 12% auto;
+  padding: 24px;
+  border: 1px solid var(--border-color);
+  width: 90%;
+  max-width: 440px;
   border-radius: 8px;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1);
 }
 
-/* Form Styles */
-.form-group {
-  margin-bottom: 15px;
+.modal-content h2 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin-bottom: 16px;
+  border-bottom: none;
+  padding-bottom: 0;
 }
 
-.form-group label {
-  display: block;
-  margin-bottom: 5px;
-  font-weight: bold;
-}
-
-.form-group input, .form-group select {
-  width: 100%;
-  padding: 8px;
-  box-sizing: border-box;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-}
-
-.form-group small {
-  color: #666;
-  font-size: 12px;
-}
-
-/* Button Styles */
-.btn-primary {
-  background-color: #4CAF50;
-  color: white;
-  padding: 10px 20px;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 14px;
-}
-
-.btn-primary:hover {
-  background-color: #45a049;
-}
-
-.btn-secondary {
-  background-color: #f44336;
-  color: white;
-  padding: 10px 20px;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 14px;
-  margin-left: 10px;
-}
-
-.btn-secondary:hover {
-  background-color: #da190b;
-}
-
-button {
-  background-color: #008CBA;
-  color: white;
-  padding: 10px 20px;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 14px;
-  margin: 5px;
-}
-
-button:hover {
-  background-color: #007399;
-}
-
-button:disabled {
-  background-color: #ccc;
-  cursor: not-allowed;
-}
-
-/* Room Card Styles */
-.room-card {
-  border: 1px solid #ddd;
-  padding: 15px;
-  margin: 10px 0;
-  border-radius: 5px;
-  background-color: #f9f9f9;
+/* Inline Dashboard Controls */
+.room-join-panel {
   display: flex;
-  justify-content: space-between;
+  flex-wrap: wrap;
   align-items: center;
+  gap: 12px;
+  margin-top: 10px;
+}
+
+.room-join-panel input {
+  flex: 1;
+  min-width: 200px;
+  padding: 8px 12px;
+  background-color: #ffffff;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  color: var(--text-main);
+  height: 38px;
+  outline: none;
+  font-family: var(--font-family);
+  font-size: 0.875rem;
+  transition: all 0.15s ease;
+}
+
+.room-join-panel input:focus {
+  border-color: var(--border-focus);
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15);
+}
+
+.room-join-divider {
+  color: var(--text-muted);
+  font-weight: 600;
+  font-size: 0.85rem;
+  padding: 0 4px;
+}
+
+/* Active Rooms grid cards */
+#activeRooms {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+  margin-top: 15px;
+}
+
+.room-card {
+  border: 1px solid var(--border-color);
+  padding: 16px;
+  border-radius: 6px;
+  background-color: #ffffff;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.02);
+  height: 100%;
 }
 
 .room-card:hover {
-  background-color: #f0f0f0;
-  cursor: pointer;
+  background-color: #fafafa;
+  border-color: #cbd5e1;
 }
 
 .room-info h3 {
-  margin: 0 0 5px 0;
-  font-size: 16px;
+  margin: 0 0 6px 0;
+  font-size: 1rem;
+  font-weight: 600;
+  border-left: none;
+  padding-left: 0;
 }
 
 .room-info p {
-  margin: 3px 0;
-  font-size: 13px;
-  color: #666;
+  margin: 4px 0;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
+.room-stats {
+  border-top: 1px solid #f4f4f5;
+  padding-top: 10px;
+  margin-top: 10px;
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+/* Room badges */
 .room-badge {
   display: inline-block;
-  padding: 3px 8px;
-  border-radius: 3px;
-  font-size: 11px;
-  font-weight: bold;
-  margin-right: 5px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
 }
 
 .badge-debate { 
-  background-color: #ff6b6b; 
-  color: white; 
+  background-color: #fee2e2; 
+  color: #991b1b;
+  border: 1px solid #fca5a5;
 }
 
 .badge-unpopular-opinion { 
-  background-color: #4ecdc4; 
-  color: white; 
+  background-color: #ecfeff; 
+  color: #155e75;
+  border: 1px solid #a5f3fc;
 }
 
 .badge-ragebait { 
-  background-color: #ff9f1c; 
-  color: white; 
+  background-color: #ffedd5; 
+  color: #9a3412;
+  border: 1px solid #fed7aa;
 }
 
 .badge-discuss { 
-  background-color: #51cf66; 
-  color: white; 
+  background-color: #f0fdf4; 
+  color: #166534;
+  border: 1px solid #bbf7d0;
 }
 
 .badge-other { 
-  background-color: #868e96; 
-  color: white; 
+  background-color: #f4f4f5; 
+  color: #3f3f46;
+  border: 1px solid #e4e4e7;
 }
 
-/* Layout Styles */
-.container {
-  margin: 20px;
-}
-
-.container h2 {
-  margin-bottom: 15px;
-}
-
-#remotes {
-  border: 5px red double;
-  min-height: 100px;
-  padding: 10px;
+/* Call Room Header & Info Area */
+.room-header {
   display: flex;
+  justify-content: space-between;
+  align-items: center;
   flex-wrap: wrap;
-  /* align-items: center; */
-  /* justify-content: center; */
-  gap: 10px;
+  gap: 15px;
+  border-bottom: 1px solid var(--border-color);
+  padding-bottom: 15px;
+  margin-bottom: 20px;
 }
 
-#currentRoom {
-  margin-top: 10px;
-  font-weight: bold;
+.room-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.875rem;
+  color: var(--text-muted);
+}
+
+.room-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* Copy Link button style */
+.btn-copy {
+  font-family: var(--font-family);
+  font-weight: 500;
+  font-size: 0.75rem;
+  padding: 4px 8px;
+  height: 26px;
+  border-radius: 4px;
+  background-color: #ffffff;
+  color: #27272a;
+  border: 1px solid var(--border-color);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-copy:hover {
+  background-color: #f4f4f5;
+  border-color: #cbd5e1;
+}
+
+/* Dynamic Call Layout */
+.room-content-wrapper {
+  display: block;
+}
+
+/* Upper Layout: User Video */
+.upper-layout {
+  margin-bottom: 20px;
+}
+
+@media (min-width: 768px) {
+  .local-card {
+    max-width: 320px;
+  }
+}
+
+.local-card {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Participants Scroll Container */
+.participants-scroll-container {
+  max-height: 480px;
+  overflow-y: auto;
+  padding-right: 8px;
+  margin-top: 8px;
+}
+
+/* Custom scrollbar for participants */
+.participants-scroll-container::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.participants-scroll-container::-webkit-scrollbar-track {
+  background: #f4f4f5;
+  border-radius: 4px;
+}
+.participants-scroll-container::-webkit-scrollbar-thumb {
+  background: #d4d4d8;
+  border-radius: 4px;
+}
+.participants-scroll-container::-webkit-scrollbar-thumb:hover {
+  background: #a1a1aa;
+}
+
+/* --- Responsive / Mobile UI Redesign --- */
+
+/* 1. Mobile Portrait: Stack layout, 3 windows visible at a time, vertical scroll */
+@media (max-width: 768px) and (orientation: portrait) {
+  body {
+    height: 100vh;
+    overflow: hidden;
+  }
+  
+  .container {
+    height: 100vh;
+    margin: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    padding: 16px !important;
+    display: flex;
+    flex-direction: column;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+  }
+  
+  .room-header {
+    flex-shrink: 0;
+    margin-bottom: 12px;
+    padding-bottom: 12px;
+  }
+  
+  .room-content-wrapper {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    overflow-y: auto;
+    gap: 12px;
+    padding-right: 4px;
+  }
+  
+  /* Flatten cards so they flow as sibling feeds */
+  .upper-layout, .participants-card {
+    display: contents !important;
+  }
+  
+  .video-card, .participants-card {
+    background: transparent !important;
+    border: none !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+    margin: 0 !important;
+  }
+  
+  .video-card h3, .participants-card h3 {
+    display: none !important;
+  }
+  
+  /* Enforce exactly 3 windows height visible at a time */
+  .local-card, .peer-wrapper {
+    height: calc((100vh - 150px) / 3) !important;
+    min-height: calc((100vh - 150px) / 3) !important;
+    width: 100% !important;
+    margin: 0 !important;
+  }
+  
+  .video-wrapper.local-video-wrapper {
+    height: 100% !important;
+    aspect-ratio: auto !important;
+  }
+}
+
+/* 2. Mobile Landscape: Side-by-side local video (fixed) & horizontal scrolling remote video (1 at a time) */
+@media (max-width: 950px) and (orientation: landscape) {
+  body {
+    height: 100vh;
+    overflow: hidden;
+  }
+  
+  .container {
+    height: 100vh;
+    margin: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    padding: 12px !important;
+    display: flex;
+    flex-direction: column;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+  }
+  
+  .room-header {
+    flex-shrink: 0;
+    margin-bottom: 8px;
+    padding-bottom: 8px;
+  }
+  
+  .room-content-wrapper {
+    display: flex;
+    flex-direction: row;
+    flex: 1;
+    min-height: 0;
+    gap: 12px;
+  }
+  
+  /* Left column: Local Video */
+  .upper-layout {
+    flex: 0 0 45% !important;
+    height: 100% !important;
+    margin: 0 !important;
+    display: block !important;
+  }
+  
+  .local-card {
+    height: 100% !important;
+    max-width: 100% !important;
+    background: transparent !important;
+    border: none !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+  }
+  
+  .local-card h3 {
+    display: none !important;
+  }
+  
+  .video-wrapper.local-video-wrapper {
+    height: 100% !important;
+    aspect-ratio: auto !important;
+  }
+  
+  /* Right column: Participants */
+  .participants-card {
+    flex: 0 0 55% !important;
+    height: 100% !important;
+    background: transparent !important;
+    border: none !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+    display: flex;
+    flex-direction: column;
+  }
+  
+  .participants-card h3 {
+    display: none !important;
+  }
+  
+  .participants-scroll-container {
+    display: flex !important;
+    flex-direction: row !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    scroll-snap-type: x mandatory;
+    height: 100% !important;
+    width: 100% !important;
+    margin-top: 0 !important;
+    padding-right: 0 !important;
+  }
+  
+  .participants-grid {
+    display: flex !important;
+    flex-direction: row !important;
+    height: 100% !important;
+    width: 100% !important;
+    gap: 12px !important;
+  }
+  
+  /* Each remote participant card takes full width of the right column */
+  .peer-wrapper {
+    flex: 0 0 100% !important;
+    width: 100% !important;
+    height: 100% !important;
+    scroll-snap-align: start;
+  }
+}
+
+.panel-header {
+  border-bottom: 1px solid #f4f4f5;
+  padding-bottom: 10px;
+  margin-bottom: 12px;
+}
+
+.panel-header h3 {
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.main-video-wrapper {
+  background-color: #09090b;
+  border-radius: 6px;
+  overflow: hidden;
+  position: relative;
+  aspect-ratio: 16/9;
+}
+
+
+
+.video-card {
+  background-color: #ffffff;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 16px;
+  box-shadow: var(--card-shadow);
+}
+
+/* Video Wrapper & Elements */
+.video-wrapper {
+  background-color: #09090b;
+  border-radius: 6px;
+  overflow: hidden;
+  position: relative;
+  aspect-ratio: 4/3;
+  width: 100%;
+}
+
+.video-wrapper video, video#local {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* Remote Participants grid inside its card */
+.participants-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+  margin-top: 5px;
 }
 
 .peer-wrapper {
-  transition: order 0.5s ease-in-out; 
+  position: relative;
+  background-color: #000000;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 2px solid var(--border-color);
+  aspect-ratio: 4/3;
 }
+
+.peer-wrapper video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  border: none !important;
+}
+
+/* Clean Active Speaker Highlight (solid green outline instead of glow) */
+.peer-wrapper.active-speaker {
+  border-color: #10b981 !important; /* solid Emerald 500 border */
+}
+
+/* Fullscreen and State Overlay UI Elements */
+.fullscreen-btn {
+  position: absolute;
+  bottom: 8px;
+  right: 8px;
+  background-color: rgba(15, 23, 42, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: #ffffff;
+  padding: 5px;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+  height: auto;
+  width: auto;
+  transition: background-color 0.15s ease;
+}
+
+.fullscreen-btn:hover {
+  background-color: rgba(15, 23, 42, 0.9);
+}
+
+.fullscreen-btn svg {
+  stroke: #ffffff;
+  display: block;
+}
+
+/* Screen sharing tag */
+.screen-indicator {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  background-color: #10b981;
+  color: #ffffff;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  text-transform: uppercase;
+}
+
 /* Footer */
 .footer {
   text-align: center;
   padding: 20px;
-  margin-top: 40px;
-  border-top: 1px solid #eee;
-  background-color: #f9f9f9;
+  margin-top: auto;
+  border-top: 1px solid var(--border-color);
+  background-color: #ffffff;
+  font-size: 0.85rem;
+  color: var(--text-muted);
 }
+
 .footer a {
-    color: #007bff;
-    text-decoration: none;
+  color: var(--primary-accent);
+  text-decoration: none;
+  font-weight: 500;
 }
+
 .footer a:hover {
-    text-decoration: underline;
+  text-decoration: underline;
+  color: var(--primary-accent-hover);
+}
+
+/* Maximized Video View (CSS Overlay Method) */
+.video-card.maximized, .peer-wrapper.maximized {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  z-index: 99999 !important;
+  margin: 0 !important;
+  border-radius: 0 !important;
+  background-color: #000000 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: center !important;
+  align-items: center !important;
+}
+
+.video-card.maximized h3 {
+  display: none !important;
+}
+
+.video-card.maximized .video-wrapper, .peer-wrapper.maximized video {
+  width: 100% !important;
+  height: 100% !important;
+  max-width: 100% !important;
+  max-height: 100% !important;
+  aspect-ratio: auto !important;
+  object-fit: contain !important;
+  border-radius: 0 !important;
+  border: none !important;
+}
+
+.video-card.maximized .video-wrapper video {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: contain !important;
+}
+
+.peer-wrapper.maximized .peer-label, .video-card.maximized .peer-label {
+  position: fixed !important;
+  bottom: 16px !important;
+  left: 50% !important;
+  transform: translateX(-50%) !important;
+  background-color: rgba(15, 23, 42, 0.7) !important;
+  color: #ffffff !important;
+  padding: 4px 12px !important;
+  border-radius: 4px !important;
+  font-size: 0.85rem !important;
+  z-index: 100000 !important;
+}
+
+.fullscreen-btn.maximized-btn {
+  position: fixed !important;
+  top: 16px !important;
+  left: 16px !important;
+  bottom: auto !important;
+  right: auto !important;
+  background-color: rgba(15, 23, 42, 0.85) !important;
+  color: #ffffff !important;
+  padding: 8px 16px !important;
+  font-size: 0.9rem !important;
+  font-weight: 600 !important;
+  border-radius: 6px !important;
+  gap: 8px !important;
+  height: auto !important;
+  width: auto !important;
+  z-index: 100000 !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
 }
