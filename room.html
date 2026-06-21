@@ -78,9 +78,7 @@
       window.location.href = '/index.html'
     }
 
-    const baseURL = window.location.origin === "null" || !window.location.origin.startsWith("http") 
-      ? "http://localhost:8080/" 
-      : window.location.origin + "/";
+    const baseURL = "https://discuss-hkih.onrender.com/"
 
     document.getElementById('roomTitle').textContent = title || `Room: ${roomId}`
   
