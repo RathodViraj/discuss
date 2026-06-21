@@ -81,6 +81,20 @@
     const baseURL = "https://discuss-hkih.onrender.com/"
 
     document.getElementById('roomTitle').textContent = title || `Room: ${roomId}`
+    
+    // Render info box and copy link button initially
+    if (meetingType) {
+      document.getElementById('roomInfo').innerHTML = `
+        <span class="room-badge badge-${meetingType}">${meetingType}</span>
+        <span>ID: <strong id="roomIdVal">${escapeHTML(roomId)}</strong></span>
+        <button class="btn-copy" onclick="copyJoinLink()" title="Copy room invite link">Copy Link</button>
+      `
+    } else {
+      document.getElementById('roomInfo').innerHTML = `
+        <span>Room ID: <strong id="roomIdVal">${escapeHTML(roomId)}</strong></span>
+        <button class="btn-copy" onclick="copyJoinLink()" title="Copy room invite link">Copy Link</button>
+      `
+    }
   
     async function fetchRoomInfo(roomId) {
       try {
@@ -272,7 +286,7 @@
 
       // 6. Connect WebSocket dynamically
       const backendBase = "discuss-hkih.onrender.com"
-      let wsUrl = `wss://${backendBase}/ws?room=${encodeURIComponent(roomName)}`
+      let wsUrl = `wss://${backendBase}/ws?room=${encodeURIComponent(roomName)}&title=${encodeURIComponent(title)}&type=${encodeURIComponent(meetingType)}`
       ws = new WebSocket(wsUrl)
 
       ws.onopen = () => console.log("WebSocket connected")
