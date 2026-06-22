@@ -69,16 +69,13 @@ func main() {
 	mime.AddExtensionType(".css", "text/css")
 	mime.AddExtensionType(".js", "application/javascript")
 
-	if err := godotenv.Load(); err != nil {
-		log.Println("No .env file found")
-	}
+	godotenv.Load()
 
 	var err error
 	RedisClient, err = db.ConnectRedis()
 	if err != nil {
 		log.Fatal("Failed to connect to Redis:", err)
 	}
-	log.Println("Connected to Redis")
 
 	port := os.Getenv("PORT")
 	if port == "" {
@@ -90,7 +87,6 @@ func main() {
 	http.HandleFunc("/rooms", getRoomsHandler)
 	http.HandleFunc("/room-info", getRoomInfoHandler)
 
-	log.Printf("SFU listening on :%s", port)
 	log.Fatal(http.ListenAndServe(":"+port, nil))
 }
 
@@ -166,6 +162,7 @@ func getRoomInfoHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
 	data, err := RedisClient.Get(ctx, "room:"+roomId).Bytes()
 	if err != nil {
 		http.Error(w, "Room not found", http.StatusNotFound)
@@ -302,7 +299,29 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 	roomsMu.Lock()
 	room, exists := rooms[roomId]
 	if !exists {
-		room = &Room{id: roomId, peers: make(map[int64]*Peer), title: title, meetingType: meetingType, createdAt: time.Now()}
+		// Attempt to recover room info from Redis in case of server restart or joiners without params
+		redisTitle := ""
+		redisType := ""
+		redisCreatedAt := time.Now()
+		if RedisClient != nil {
+			if data, err := RedisClient.Get(ctx, "room:"+roomId).Bytes(); err == nil {
+				var info RoomInfo
+				if json.Unmarshal(data, &info) == nil {
+					redisTitle = info.Title
+					redisType = info.MeetingType
+					redisCreatedAt = info.CreatedAt
+				}
+			}
+		}
+
+		if title == "" && redisTitle != "" {
+			title = redisTitle
+		}
+		if meetingType == "" && redisType != "" {
+			meetingType = redisType
+		}
+
+		room = &Room{id: roomId, peers: make(map[int64]*Peer), title: title, meetingType: meetingType, createdAt: redisCreatedAt}
 		rooms[roomId] = room
 		saveRoomToRedis(room)
 		room.timer = time.AfterFunc(10*time.Minute, func() { endRoom(room) })
@@ -310,7 +329,6 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 	roomsMu.Unlock()
 
 	room.mu.Lock()
-	// Add existing tracks to new peer
 	for _, other := range room.peers {
 		other.mu.RLock()
 		for _, track := range other.tracks {
@@ -340,18 +358,8 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 	updateRoomPeerCount(roomId, len(room.peers))
 	room.mu.Unlock()
 
-	// Log ICE connection state changes for debugging
-	pc.OnICEConnectionStateChange(func(state webrtc.ICEConnectionState) {
-		log.Printf("Peer %d ICE state: %s", peer.id, state.String())
-	})
-
-	pc.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
-		log.Printf("Peer %d connection state: %s", peer.id, state.String())
-	})
-
 	pc.OnICECandidate(func(c *webrtc.ICECandidate) {
 		if c != nil {
-			log.Printf("Peer %d sending ICE candidate: %s", peer.id, c.ToJSON().Candidate)
 			peer.wsMu.Lock()
 			ws.WriteJSON(map[string]any{"type": "ice", "candidate": c.ToJSON()})
 			peer.wsMu.Unlock()
@@ -401,7 +409,6 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 				}
 				sender, err := other.pc.AddTrack(local)
 				if err != nil {
-					log.Printf("Failed to add track to peer %d: %v", other.id, err)
 					continue
 				}
 
@@ -475,21 +482,18 @@ func renegotiate(p *Peer) {
 	p.negotiating = true
 	offer, err := p.pc.CreateOffer(nil)
 	if err != nil {
-		log.Printf("Failed to create offer for peer %d: %v", p.id, err)
 		p.negotiating = false
 		return
 	}
 
 	err = p.pc.SetLocalDescription(offer)
 	if err != nil {
-		log.Printf("Failed to set local description for peer %d: %v", p.id, err)
 		p.negotiating = false
 		return
 	}
 
 	err = p.ws.WriteJSON(map[string]any{"type": "offer", "sdp": offer})
 	if err != nil {
-		log.Printf("Failed to send offer to peer %d: %v", p.id, err)
 		p.negotiating = false
 	}
 }

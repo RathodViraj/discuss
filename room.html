@@ -113,7 +113,7 @@
           `;
         }
       } catch (err) {
-        console.warn('Could not load room info from server:', err);
+        // silently ignore
       }
     }
 
@@ -132,7 +132,6 @@
         videoTrack = localStream.getVideoTracks()[0]
         audioTrack = localStream.getAudioTracks()[0]
       } catch (e) {
-        console.error("Could not get user media", e)
         return
       }
 
@@ -172,15 +171,10 @@
       // 3. Add Local Tracks
       localStream.getTracks().forEach(t => pc.addTrack(t, localStream))
 
-      // Debug hooks
-      // pc.oniceconnectionstatechange = () => console.log("ICE connection state:", pc.iceConnectionState)
-      // pc.onconnectionstatechange = () => console.log("Connection state:", pc.connectionState)
-      // pc.onicegatheringstatechange = () => console.log("ICE gathering state:", pc.iceGatheringState)
 
       // 4. Handle ICE candidates
       pc.onicecandidate = e => {
         if (e.candidate && ws.readyState === WebSocket.OPEN) {
-          // console.log("Sending ICE candidate:", e.candidate.candidate)
           ws.send(JSON.stringify({type:"ice", candidate:e.candidate}))
         }
       }
@@ -193,7 +187,6 @@
         const peerId = stream.id 
         const kind = e.track.kind
         
-        // console.log(`Received ${kind} track for peer ${peerId}, stream has ${stream.getTracks().length} tracks`)
 
         let container = remoteStreams.get(peerId)
         
@@ -254,15 +247,14 @@
           
           // Force play
           setTimeout(() => {
-            video.play().catch(err => console.log("Autoplay blocked:", err))
+            video.play().catch(() => {})
           }, 100)
         } else {
-          // console.log(`Updating stream for peer ${peerId}`)
           container.stream = stream
           container.video.srcObject = stream
           
           setTimeout(() => {
-            container.video.play().catch(err => console.log("Autoplay blocked:", err))
+            container.video.play().catch(() => {})
           }, 100)
         }
         
@@ -289,8 +281,10 @@
       let wsUrl = `wss://${backendBase}/ws?room=${encodeURIComponent(roomName)}&title=${encodeURIComponent(title)}&type=${encodeURIComponent(meetingType)}`
       ws = new WebSocket(wsUrl)
 
-      ws.onopen = () => console.log("WebSocket connected")
-      
+      ws.onopen = () => {
+        fetchRoomInfo(roomName);
+      }
+
       ws.onmessage = async e => {
         const msg = JSON.parse(e.data)
 
@@ -341,9 +335,8 @@
         container.audioCtx = audioCtx;
         container.analyser = analyser;
         
-        // console.log(`Audio analysis setup for peer ${stream.id}`);
       } catch(e) {
-        console.error("Audio analysis failed:", e);
+        // silently ignore
       }
     }
 
@@ -427,7 +420,6 @@
         
         if (videoSender) {
           await videoSender.replaceTrack(screenTrack)
-          console.log('Screen sharing started')
           document.getElementById('local').srcObject = screenStream
           
           btn.textContent = 'Stop Sharing'
@@ -440,7 +432,6 @@
           }
         }
       } catch (err) {
-        console.error('Screen share error:', err)
         alert('Could not start screen sharing: ' + err.message)
       }
     }
@@ -457,7 +448,6 @@
       
       if (videoSender && originalVideoTrack) {
         videoSender.replaceTrack(originalVideoTrack)
-        console.log('Screen sharing stopped, camera restored')
       }
       
       document.getElementById('local').srcObject = localStream
@@ -510,9 +500,7 @@
           btn.style.color = '';
           btn.style.borderColor = '';
         }, 2000);
-      }).catch(err => {
-        console.error('Failed to copy link:', err);
-      });
+      }).catch(() => {});
     }
 
     function escapeHTML(str) {

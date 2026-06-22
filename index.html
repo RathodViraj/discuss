@@ -106,6 +106,7 @@
           const badgeClass = `badge-${room.meetingType}`;
           const peerText = `${room.peerCount} participant${room.peerCount !== 1 ? 's' : ''}`;
           const expiryText = expiresIn <= 0 ? 'Expires in 0 min' : `Expires in ${expiresIn} min`;
+
           
           return `
             <div class="room-card" onclick="joinRoomById('${room.id}')" style="cursor: pointer;">
@@ -124,7 +125,7 @@
           `;
         }).join('');
       } catch (error) {
-        console.error('Failed to load rooms:', error);
+        // silently ignore
       }
     }
 
@@ -175,7 +176,7 @@
       const roomName = Math.random().toString(36).substring(2, 8) + Math.random().toString(36).substring(2, 8);
       
       // Redirect
-      window.location.href = `/room.html?room=${encodeURIComponent(roomName)}`;
+      window.location.href = `/room.html?room=${encodeURIComponent(roomName)}&title=${encodeURIComponent(title)}&type=${encodeURIComponent(type)}`;
     }
 
     function joinExistingRoom() {
@@ -184,7 +185,7 @@
         alert('Please enter a room ID');
         return;
       }
-      window.location.href = `/room.html?room=${encodeURIComponent(roomName)}`;
+      window.location.href = `/room.html?room=${encodeURIComponent(roomName)}&title=&type=`; 
     }
   </script>
 </body>
