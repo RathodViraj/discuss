@@ -107,13 +107,17 @@
           const peerText = `${room.peerCount} participant${room.peerCount !== 1 ? 's' : ''}`;
           const expiryText = expiresIn <= 0 ? 'Expires in 0 min' : `Expires in ${expiresIn} min`;
 
-          
+          const displayTitle = escapeHTML(room.title) || `Room ${room.id}`;
+          const badgeHTML = room.meetingType 
+            ? `<span class="room-badge ${badgeClass}">${room.meetingType}</span>` 
+            : '';
+
           return `
             <div class="room-card" onclick="joinRoomById('${room.id}')" style="cursor: pointer;">
               <div class="room-info">
-                <h3>${escapeHTML(room.title) || room.id}</h3>
+                <h3>${displayTitle}</h3>
                 <p style="margin-top: 6px;">
-                  <span class="room-badge ${badgeClass}">${room.meetingType}</span>
+                  ${badgeHTML}
                   <span>Room ID: ${room.id}</span>
                 </p>
               </div>

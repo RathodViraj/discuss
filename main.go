@@ -325,6 +325,20 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 		rooms[roomId] = room
 		saveRoomToRedis(room)
 		room.timer = time.AfterFunc(10*time.Minute, func() { endRoom(room) })
+	} else {
+		// Update room metadata if it was missing and this connection provides it
+		updated := false
+		if room.title == "" && title != "" {
+			room.title = title
+			updated = true
+		}
+		if room.meetingType == "" && meetingType != "" {
+			room.meetingType = meetingType
+			updated = true
+		}
+		if updated {
+			saveRoomToRedis(room)
+		}
 	}
 	roomsMu.Unlock()
 
