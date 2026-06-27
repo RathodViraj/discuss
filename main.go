@@ -218,13 +218,15 @@ func forwardPLI(sender *webrtc.RTPSender, sourcePeer *Peer, trackID string) {
 func wsHandler(w http.ResponseWriter, r *http.Request) {
 	roomId := r.URL.Query().Get("room")
 	if roomId == "" {
-		roomId = "default"
+		http.Error(w, "Missing room ID", http.StatusBadRequest)
+		return
 	}
 	title := r.URL.Query().Get("title")
 	meetingType := r.URL.Query().Get("type")
 
 	ws, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
+		http.Error(w, "Failed to upgrade WebSocket connection", http.StatusInternalServerError)
 		return
 	}
 
@@ -238,6 +240,7 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 		},
 		PayloadType: 96,
 	}, webrtc.RTPCodecTypeVideo); err != nil {
+		http.Error(w, "Failed to register video codec", http.StatusInternalServerError)
 		return
 	}
 
@@ -245,6 +248,7 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 		RTPCodecCapability: webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeOpus, ClockRate: 48000, Channels: 2, SDPFmtpLine: "", RTCPFeedback: nil},
 		PayloadType:        111,
 	}, webrtc.RTPCodecTypeAudio); err != nil {
+		http.Error(w, "Failed to register audio codec", http.StatusInternalServerError)
 		return
 	}
 
@@ -282,6 +286,7 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 		ICETransportPolicy: webrtc.ICETransportPolicyRelay,
 	})
 	if err != nil {
+		http.Error(w, "Failed to create PeerConnection", http.StatusInternalServerError)
 		return
 	}
 

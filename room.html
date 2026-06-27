@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8"> 
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Room - SFU</title>
+  <title>Discuss Room</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -104,6 +104,7 @@
         
         if (info.title) {
           document.getElementById('roomTitle').textContent = info.title;
+          document.title = info.title;
         }
         if (info.meetingType) {
           document.getElementById('roomInfo').innerHTML = `
@@ -145,28 +146,28 @@
             credential: "openrelayproject",
           },
           {
-        urls: "turn:global.relay.metered.ca:80",
-        username: "f358091188d50dfcfc0a96ce",
-        credential: "7cHWPVPt4N2vedaP",
-      },
-      {
-        urls: "turn:global.relay.metered.ca:80?transport=tcp",
-        username: "f358091188d50dfcfc0a96ce",
-        credential: "7cHWPVPt4N2vedaP",
-      },
-      {
-        urls: "turn:global.relay.metered.ca:443",
-        username: "f358091188d50dfcfc0a96ce",
-        credential: "7cHWPVPt4N2vedaP",
-      },
-      {
-        urls: "turns:global.relay.metered.ca:443?transport=tcp",
-        username: "f358091188d50dfcfc0a96ce",
-        credential: "7cHWPVPt4N2vedaP",
-      },
-    ],
-    iceTransportPolicy: "relay"
-  })
+            urls: "turn:global.relay.metered.ca:80",
+            username: "f358091188d50dfcfc0a96ce",
+            credential: "7cHWPVPt4N2vedaP",
+          },
+          {
+            urls: "turn:global.relay.metered.ca:80?transport=tcp",
+            username: "f358091188d50dfcfc0a96ce",
+            credential: "7cHWPVPt4N2vedaP",
+          },
+          {
+            urls: "turn:global.relay.metered.ca:443",
+            username: "f358091188d50dfcfc0a96ce",
+            credential: "7cHWPVPt4N2vedaP",
+          },
+          {
+            urls: "turns:global.relay.metered.ca:443?transport=tcp",
+            username: "f358091188d50dfcfc0a96ce",
+            credential: "7cHWPVPt4N2vedaP",
+          },
+        ],
+        iceTransportPolicy: "relay"
+    })
 
       // 3. Add Local Tracks
       localStream.getTracks().forEach(t => pc.addTrack(t, localStream))
@@ -283,6 +284,10 @@
 
       ws.onopen = () => {
         fetchRoomInfo(roomName);
+      }
+
+      ws.onerror = e => {
+        alert('error: ' + e.message)
       }
 
       ws.onmessage = async e => {
